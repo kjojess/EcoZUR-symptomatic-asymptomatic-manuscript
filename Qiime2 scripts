@@ -60,9 +60,6 @@ qiime metadata tabulate --m-input-file taxonomy_EcoZUR.qza --o-visualization tax
 #make interactive taxonomic bar plots
 qiime taxa barplot --i-table table_EcoZUR.qza --i-taxonomy taxonomy_EcoZUR.qza --m-metadata-file EcoZUR_meta_updated_pathotypes.tsv --o-visualization tax_barplots_EcoZUR.qzv
 
-#convert table to relative abundance (will use for lefse)
-qiime feature-table relative-frequency --i-table table_EcoZUR.qza --o-relative-frequency-table rel_table_EcoZUR.qza
-
 #make new directory and copy over files needed to create phyloseq object in R
 mkdir phyloseq
 cp table_EcoZUR.qza phyloseq
