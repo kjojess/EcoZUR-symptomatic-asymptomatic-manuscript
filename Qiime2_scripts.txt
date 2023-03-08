@@ -10,10 +10,10 @@ conda activate qiime2-2019.7
 #cd to new directory with tab seperated manifest file specifying file locations (EcoZUR_manifest_all_format.tsv)
 cd ~/16S_EcoZUR_qiime2/symp_asymp
 
-#import data into qiime2
+#import data
 qiime tools import --type 'SampleData[PairedEndSequencesWithQuality]' --input-path EcoZUR_manifest_all_format.tsv --output-path ./EcoZUR.qza --input-format PairedEndFastqManifestPhred33V2
 
-#qiime2 plot to view seq counts and quality scores
+#View seq counts and quality scores
 qiime demux summarize --i-data ../old/EcoZUR_all/EcoZUR.qza --o-visualization EcoZUR_demux.qzv
 
 #dada2 denoising (also merges paired reads)
@@ -57,10 +57,10 @@ qiime feature-classifier classify-sklearn --i-classifier classifier.qza --i-read
 #view taxonomy table
 qiime metadata tabulate --m-input-file taxonomy_EcoZUR.qza --o-visualization taxonomy_EcoZUR.qzv
 
-#make interactive taxonomic bar plots
+#interactive taxonomic bar plots
 qiime taxa barplot --i-table table_EcoZUR.qza --i-taxonomy taxonomy_EcoZUR.qza --m-metadata-file EcoZUR_meta_updated_pathotypes.tsv --o-visualization tax_barplots_EcoZUR.qzv
 
-#make new directory and copy over files needed to create phyloseq object in R
+#copy files needed to create phyloseq object in R to a new directory
 mkdir phyloseq
 cp table_EcoZUR.qza phyloseq
 cp rooted_tree_masked_aligned_rep_set_EcoZUR.qza phyloseq
