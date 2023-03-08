@@ -1,0 +1,5 @@
+,pathotype,cc,pathotype_cc
+pathpos_case,Pathotype-positive,Case,Symptomatic DEC infections
+pathpos_control,Pathotype-positive,Control,Asymptomatic DEC infections
+pathneg_case,Pathotype-negative,Case,Uninfected cases
+pathneg_control,Pathotype-negative,Control,Uninfected controls
