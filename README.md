@@ -1,5 +1,5 @@
 # EcoZUR-symptomatic-asymptomatic-manuscript
-Scripts to analyze gut microbiome and E. coli genomes data for symptomatic and asymptomatic diarrheal E. coli infections.
+Scripts to analyze gut microbiome and whole-genome sequencing data for symptomatic and asymptomatic diarrheal E. coli infections
 <li> 16S rRNA amplicon data
   <ul>
   <li>Qiime2_scripts.txt: Qiime 2 import and processing scripts for 16S rRNA amplicon microbiome data
