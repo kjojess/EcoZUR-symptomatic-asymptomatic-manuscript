@@ -21,5 +21,5 @@ makeblastdb -in GRCh38_latest_genomic.fna -dbtype nucl
 #run BMtagger
 for f in *.fa; do  bmtagger.sh -b GRCh38_latest_genomic.bitmask -x GRCh38_latest_genomic.srprism -T ~/scratch -q0 -1 $f -o $f.human_reads_removed.fa -X; done
 
-#also used to remove E. coli reads for some analyses by replacing human genomome file with E. coli reference genome
+#also used to remove E. coli reads by replacing human genomome file with E. coli reference genome
 
