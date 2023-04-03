@@ -1,0 +1,552 @@
+---
+title: "Beta diversity combined"
+author: "Kelsey Jesser"
+date: "3/10/2023"
+output: html_document
+---
+
+#clear R env
+```{r message=FALSE, warning=FALSE}
+rm(list = ls())
+```
+
+#load libraries
+```{r message=FALSE, warning=FALSE}
+#load libraries
+library(vegan)
+library(ggplot2)
+library(plyr)
+library(dplyr)
+library(cowplot)
+library(phyloseq)
+library(ggthemes)
+library(qiime2R)
+library(ggpubr)
+library(microViz)
+library(tidyverse)
+```
+
+#set theme
+```{r message=FALSE, warning=FALSE}
+theme_set(theme_bw())
+```
+
+#read in 16S data
+```{r message=FALSE, warning=FALSE}
+phy<-qza_to_phyloseq("table_EcoZUR.qza", 
+                     "rooted_tree_masked_aligned_rep_set_EcoZUR.qza", 
+                     "taxonomy_EcoZUR.qza", 
+                     "EcoZUR_meta_updated_pathotypes.tsv")
+phy
+
+#remove taxa where phylum is ambiguous (these are likely artifacts)
+phy <- subset_taxa(phy, !is.na(Phylum) & !Phylum %in% c("", "uncharacterized"))
+
+#remove chloroplast and mitochondrial sequences
+phy<-subset_taxa(phy, (Class!="Cloroplast") | is.na(Class))
+phy<-subset_taxa(phy, (Family!="mitochondria") | is.na(Class))
+
+phy
+
+#remove taxa that occur <2x and in <10% of samples
+phy = filter_taxa(phy, function(x) sum(x > 2) > (0.1*length(x)), TRUE)
+
+phy
+
+#remove rotavirus-positive samples
+phy<- subset_samples(phy, rota!="1")
+
+#remove E. coli
+phy_filt<-subset_taxa(phy, (Species!="coli"))
+
+#add diarrhea and infection status metadata to phyloseq object
+meta<-read.csv(file = "16S_metadata_DEC_diarrhea.csv")
+phy<-ps_join(x = phy, y = meta, type = "inner", match_sample_names="SampleID")
+phy_filt<-ps_join(x = phy_filt, y = meta, type = "inner", match_sample_names="SampleID")
+
+#rarefy to even sequencing depth
+phy  = rarefy_even_depth(phy, sample.size = 10000, rngseed = 12356, replace = TRUE, trimOTUs = TRUE, verbose = TRUE)
+
+phy
+
+phy_filt  = rarefy_even_depth(phy_filt, sample.size = 10000, rngseed = 12356, replace = TRUE, trimOTUs = TRUE, verbose = TRUE)
+
+phy_filt
+
+#subset data by infection status
+phy_inf<-subset_samples(phy, DEC_infection=="Infected")
+phy_uninf<-subset_samples(phy, DEC_infection=="Uninfected")
+
+phy_filt_inf<-subset_samples(phy_filt, DEC_infection=="Infected")
+phy_filt_uninf<-subset_samples(phy_filt, DEC_infection=="Uninfected")
+
+
+#subset metadata by infection status
+meta_phy_inf<-data.frame(sample_data(phy_inf))
+meta_phy_uninf<-data.frame(sample_data(phy_uninf))
+
+meta_phy_filt_inf<-data.frame(sample_data(phy_filt_inf))
+meta_phy_filt_uninf<-data.frame(sample_data(phy_filt_uninf))
+```
+
+#16S NMDS plots with E. coli
+```{r message=FALSE, warning=FALSE}
+#sympotmatic and asymptomatic infections
+bray_inf_cc<-ordinate(phy_inf, method="NMDS", distance="bray", color=Diarrhea, trymax=1000)
+
+bray_inf_cc_df<-data.frame(bray_inf_cc$points)
+
+centroid_inf<- bray_inf_cc_df%>%
+  merge(meta_phy_inf, by=0)%>%
+  group_by(cc)%>% 
+  summarize_at(c("MDS1", "MDS2"), mean)%>%
+  dplyr::rename("NMDS1"="MDS1")%>%
+  dplyr::rename("NMDS2"="MDS2")
+
+a<-plot_ordination(phy_inf, bray_inf_cc, type="samples", color="cc")
+a1<-ggplot(a$data, a$mapping)+
+  geom_point(size=2, alpha=0.8)+
+  stat_ellipse(aes(fill=cc), geom="polygon", level=0.95, alpha=0.15)+
+ # geom_point(data=centroid_inf, size=5, aes(fill=cc), shape=21, color="black")+
+  scale_color_manual(values=c("coral2", "steelblue3"), labels=c("Symptomatic DEC infections", "Asymptomatic infections"))+
+  scale_fill_manual(values=c("coral2", "steelblue3"), labels=c("Symptomatic DEC infections", "Asymptomatic infections"))+
+ # ggtitle("DEC infected samples")+
+  scale_x_continuous( labels = scales::comma)+
+  scale_y_continuous( labels = scales::comma)+
+  scale_y_continuous(breaks=seq(-1,1,1))+
+  scale_x_continuous(breaks=seq(-1,1,1))+
+  xlab("NMDS1")+
+  ylab("NMDS2")+
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.title=element_blank(), panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="none")
+a1
+
+#uninfected cases and controls
+bray_uninf_cc<-ordinate(phy_uninf, method="NMDS", distance="bray", color=Diarrhea, trymax=1000)
+
+bray_uninf_cc_df<-data.frame(bray_uninf_cc$points)
+centroid_uninf<- bray_uninf_cc_df%>%
+  merge(meta_phy_uninf, by=0)%>%
+  group_by(cc)%>% 
+  summarize_at(c("MDS1", "MDS2"), mean)%>%
+  dplyr::rename("NMDS1"="MDS1")%>%
+  dplyr::rename("NMDS2"="MDS2")
+
+b<-plot_ordination(phy_uninf, bray_uninf_cc, type="samples", color="cc")
+b1<-ggplot(b$data, b$mapping)+
+  geom_point(size=2, alpha=0.8)+
+  stat_ellipse(aes(fill=cc), geom="polygon", level=0.95, alpha=0.15)+
+ # geom_point(data=centroid_uninf, size=5, aes(fill=cc), shape=21, color="black")+
+  scale_color_manual(values=c("darkgoldenrod2", "darkolivegreen4"), labels=c("Uninfected cases", "Uninfected controls"))+
+  scale_fill_manual(values=c("darkgoldenrod2", "darkolivegreen4"), labels=c("Uninfected cases", "Uninfected controls"))+
+ # ggtitle("Uninfected samples")+
+  scale_x_continuous( labels = scales::comma)+
+  scale_y_continuous( labels = scales::comma)+
+  scale_y_continuous(breaks=seq(-1,1,1))+
+  scale_x_continuous(breaks=seq(-1,1,1))+
+  xlab("NMDS1")+
+  ylab("NMDS2")+
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.title=element_blank(), panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="none")
+b1
+```
+
+#16S NMDS plots with E. coli removed
+```{r message=FALSE, warning=FALSE}
+#sympotmatic and asymptomatic infection
+bray_inf_cc_filt<-ordinate(phy_filt_inf, method="NMDS", distance="bray", color=Diarrhea, trymax=1000)
+
+bray_inf_cc_filt_df<-data.frame(bray_inf_cc_filt$points)
+centroid_inf_filt<- bray_inf_cc_filt_df%>%
+  merge(meta_phy_filt_inf, by=0)%>%
+  group_by(cc)%>% 
+  summarize_at(c("MDS1", "MDS2"), mean)%>%
+  dplyr::rename("NMDS1"="MDS1")%>%
+  dplyr::rename("NMDS2"="MDS2")
+
+c<-plot_ordination(phy_filt_inf, bray_inf_cc_filt, type="samples", color="cc")
+c1<-ggplot(c$data, c$mapping)+
+  geom_point(size=2, alpha=0.8)+
+  stat_ellipse(aes(fill=cc), geom="polygon", level=0.95, alpha=0.15)+
+  #geom_point(data=centroid_inf_filt, size=5, aes(fill=cc), shape=21, color="black")+
+  scale_color_manual(values=c("coral2", "steelblue3"), labels=c("Symptomatic DEC infections", "Asymptomatic infections"))+
+  scale_fill_manual(values=c("coral2", "steelblue3"), labels=c("Symptomatic DEC infections", "Asymptomatic infections"))+
+ # ggtitle("DEC infected samples")+
+  scale_x_continuous( labels = scales::comma)+
+  scale_y_continuous( labels = scales::comma)+
+  scale_y_continuous(breaks=seq(-1,1,1))+
+  scale_x_continuous(breaks=seq(-1,1,1))+
+  xlab("NMDS1")+
+  ylab("NMDS2")+
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.title=element_blank(), panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="none")
+c1
+
+#uninfected cases and controls
+bray_uninf_cc_filt<-ordinate(phy_filt_uninf, method="NMDS", distance="bray", color=Diarrhea, trymax=1000)
+
+bray_uninf_cc_filt_df<-data.frame(bray_uninf_cc_filt$points)
+centroid_uninf_filt<- bray_uninf_cc_filt_df%>%
+  merge(meta_phy_filt_uninf, by=0)%>%
+  group_by(cc)%>% 
+  summarize_at(c("MDS1", "MDS2"), mean)%>%
+  dplyr::rename("NMDS1"="MDS1")%>%
+  dplyr::rename("NMDS2"="MDS2")
+
+d<-plot_ordination(phy_filt_uninf, bray_uninf_cc_filt, type="samples", color="cc")
+d1<-ggplot(d$data, d$mapping)+
+  geom_point(size=2, alpha=0.8)+
+  stat_ellipse(aes(fill=cc), geom="polygon", level=0.95, alpha=0.15)+
+ # geom_point(data=centroid_uninf_filt, size=5, aes(fill=cc), shape=21, color="black")+
+  scale_color_manual(values=c("darkgoldenrod2", "darkolivegreen4"), labels=c("Uninfected cases", "Uninfected controls"))+
+  scale_fill_manual(values=c("darkgoldenrod2", "darkolivegreen4"), labels=c("Uninfected cases", "Uninfected controls"))+
+ # ggtitle("Uninfected samples")+
+  scale_x_continuous( labels = scales::comma)+
+  scale_y_continuous( labels = scales::comma)+
+  scale_y_continuous(breaks=seq(-1,1,1))+
+  scale_x_continuous(breaks=seq(-1,1,1))+
+  #guides(fill="none")+
+  xlab("NMDS1")+
+  ylab("NMDS2")+
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.title=element_blank(), panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="none")
+d1
+```
+#read in MASH distance matrices
+```{r message=FALSE, warning=FALSE}
+#import and format metadata
+metadata<-read.csv('mash2_all_meta v2.csv')
+
+metadata_Inf<-metadata%>%
+  subset(Infection=="Infected")
+
+metadata_Uninf<-metadata%>%
+  subset(Infection=="Uninfected")
+
+#import matrix and remove rota+ samples
+mat<-read.csv("mash_out_all.csv", header=T, row.names = NULL)%>%
+  select(-c(MG_17, MG_4, MG_53, MG_54, MG_56, MG_7, MG_8, MG_9, MG_50))%>%
+  subset(X.query!="MG_17" & X.query!="MG_4" & X.query!="MG_53" & X.query!="MG_54" & X.query!="MG_56" & X.query!="MG_7" & X.query!="MG_8" & X.query!="MG_9" & X.query!="MG_50")%>%
+  as.data.frame()%>%
+  remove_rownames()%>%
+  column_to_rownames("X.query")%>%
+  as.matrix()
+
+#DEC-infected
+DEC_Inf<-metadata_Inf$sample
+DEC_Uninf<-metadata_Uninf$sample
+
+mat_Inf<- mat %>%
+  as.data.frame()%>%
+  select(c(DEC_Inf))%>%
+  filter(row.names(mat) %in% c(DEC_Inf))%>%
+  as.matrix()
+
+mat_Uninf<-mat %>%
+  as.data.frame%>%
+  select(c(DEC_Uninf))%>%
+  filter(row.names(mat) %in% c(DEC_Uninf))%>%
+  as.matrix()
+
+#without E. coli
+#import matrix (rota+ already filtered)
+mat_filt<-read.csv("mash_out_no_Ec_2022.csv", header=T, row.names = NULL)%>%
+  column_to_rownames("X.query")%>%
+  as.matrix
+
+mat_filt_Inf<- mat_filt %>%
+  as.data.frame()%>%
+  select(c(DEC_Inf))%>%
+  filter(row.names(mat) %in% c(DEC_Inf))%>%
+  as.matrix()
+
+mat_filt_Uninf<-mat_filt %>%
+  as.data.frame%>%
+  select(c(DEC_Uninf))%>%
+  filter(row.names(mat) %in% c(DEC_Uninf))%>%
+  as.matrix()
+```
+
+#MASH NMDS plots with E. coli
+```{r message=FALSE, warning=FALSE}
+#sympotmatic and asymptomatic infections
+nmds_Inf <- metaMDS(mat_Inf, k=2, trace=TRUE, autotransform=FALSE, plot=FALSE)
+nmds_Inf <- metaMDS(mat_Inf, k=3, trace=TRUE, autotransform=FALSE) #plot=TRUE
+# nmds <- metaMDS(dist_mat, dist, k=2, trace=FALSE) 
+
+NMDS1_Inf = nmds_Inf$points[,1]
+NMDS2_Inf = nmds_Inf$points[,2]
+NMDS3_Inf = nmds_Inf$points[,3]
+
+NMDS_Inf = data.frame(NMDS1_Inf=NMDS1_Inf, NMDS2_Inf=NMDS2_Inf, Diarrhea=factor(metadata_Inf$Diarrhea), 
+                  DEC_Inf=factor(metadata_Inf$Infection)) # NMDS3=NMDS3,
+
+centroid_Inf<- NMDS_Inf%>%
+  group_by(Diarrhea) %>%
+  summarize_at(c("NMDS1_Inf", "NMDS2_Inf"), mean)
+
+e <- ggplot(NMDS_Inf, aes(x=NMDS1_Inf, y=NMDS2_Inf)) + 
+  geom_point(aes(col=Diarrhea),size=2.5, alpha =0.8) + 
+  stat_ellipse(aes(color=metadata_Inf$Diarrhea, fill=metadata_Inf$Diarrhea), geom="polygon", level =0.95, alpha=0.15)+
+  #geom_point(data=centroid_Inf, size=5, aes(fill=Diarrhea), shape=21, color="black")+
+    scale_fill_manual(values=c("coral2", "steelblue3"), labels=c("Symptomatic DEC infections", "Asympotmatic DEC infections"))+
+  scale_color_manual(values=c("coral2", "steelblue3"), labels=c("Symptomatic DEC infections", "Asymptomatic DEC infections"))+
+  scale_x_continuous( labels = scales::comma)+
+  scale_y_continuous( labels = scales::comma)+
+  scale_y_continuous(breaks=seq(-1,1,0.5))+
+  scale_x_continuous(breaks=seq(-1,1,0.5))+
+  xlab("NMDS1")+
+  ylab("NMDS2")+
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.title=element_blank(), panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="none")
+e
+
+#Uninfected cases and controls
+#plot nmds
+nmds_Uninf <- metaMDS(mat_Uninf, k=2, trace=TRUE, autotransform=FALSE)
+nmds_Uninf <- metaMDS(mat_Uninf, k=3, trace=TRUE, autotransform=FALSE) #plot=TRUE
+# nmds <- metaMDS(dist_mat, dist, k=2, trace=FALSE) 
+
+NMDS1_Uninf = nmds_Uninf$points[,1]
+NMDS2_Uninf = nmds_Uninf$points[,2]
+NMDS3_Uninf = nmds_Uninf$points[,3]
+
+NMDS_Uninf = data.frame(NMDS1_Uninf=NMDS1_Uninf, NMDS2_Uninf=NMDS2_Uninf, Diarrhea=factor(metadata_Uninf$Diarrhea), 
+                  DEC_Inf=factor(metadata_Uninf$Infection)) # NMDS3=NMDS3,
+
+centroid_Uninf<- NMDS_Uninf%>%
+  group_by(Diarrhea) %>%
+  summarize_at(c("NMDS1_Uninf", "NMDS2_Uninf"), mean)
+
+f <- ggplot(NMDS_Uninf, aes(x=NMDS1_Uninf, y=NMDS2_Uninf)) + 
+  geom_point(aes(col=Diarrhea),size=2.5, alpha =0.8) + 
+  stat_ellipse(aes(color=metadata_Uninf$Diarrhea, fill=metadata_Uninf$Diarrhea), geom="polygon", level =0.95, alpha=0.15)+
+ # geom_point(data=centroid_Uninf, size=5, aes(fill=Diarrhea), shape=21, color="black")+
+  scale_color_manual(values=c("darkgoldenrod2", "darkolivegreen4"), labels=c("Uninfected cases", "Uninfected controls"))+
+  scale_fill_manual(values=c("darkgoldenrod2", "darkolivegreen4"), labels=c("Uninfected cases", "Uninfected controls"))+
+  scale_x_continuous( labels = scales::comma)+
+  scale_y_continuous( labels = scales::comma)+
+  scale_y_continuous(breaks=seq(-1,1,0.5))+
+  scale_x_continuous(breaks=seq(-1,1,0.5))+
+  xlab("NMDS1")+
+  ylab("NMDS2")+
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.title=element_blank(), panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="none")
+f
+```
+
+#MASH NMDS plots without E. coli
+```{r message=FALSE, warning=FALSE}
+#sympotmatic and asymptomatic infections
+nmds_Inf_filt <- metaMDS(mat_filt_Inf, k=2, trace=TRUE, autotransform=FALSE)
+nmds_Inf_filt <- metaMDS(mat_filt_Inf, k=3, trace=TRUE, autotransform=FALSE) #plot=TRUE
+
+NMDS1_Inf_filt = nmds_Inf_filt$points[,1]
+NMDS2_Inf_filt = nmds_Inf_filt$points[,2]
+NMDS3_Inf_filt = nmds_Inf_filt$points[,3]
+
+NMDS_Inf_filt = data.frame(NMDS1_Inf_filt=NMDS1_Inf_filt, NMDS2_Inf_filt=NMDS2_Inf_filt, Diarrhea=factor(metadata_Inf$Diarrhea), 
+                  DEC_Inf=factor(metadata_Inf$Infection)) 
+
+centroid_Inf_filt<- NMDS_Inf_filt%>%
+  group_by(Diarrhea) %>%
+  summarize_at(c("NMDS1_Inf_filt", "NMDS2_Inf_filt"), mean)
+  
+g <- ggplot(NMDS_Inf_filt, aes(x=NMDS1_Inf_filt, y=NMDS2_Inf_filt)) + 
+  geom_point(aes(col=Diarrhea),size=2.5, alpha =0.8) + 
+  stat_ellipse(aes(color=metadata_Inf$Diarrhea, fill=metadata_Inf$Diarrhea), geom="polygon", level =0.95, alpha=0.15)+
+ # geom_point(data=centroid_Inf_filt, size=5, aes(fill=Diarrhea), shape=21, color="black")+
+  scale_fill_manual(values=c("coral2", "steelblue3"), labels=c("Symptomatic DEC infections", "Asympotmatic DEC infections"))+
+  scale_color_manual(values=c("coral2", "steelblue3"), labels=c("Symptomatic DEC infections", "Asymptomatic DEC infections"))+
+  scale_x_continuous( labels = scales::comma)+
+  scale_y_continuous( labels = scales::comma)+
+  scale_y_continuous(breaks=seq(-1,1,0.5))+
+  scale_x_continuous(breaks=seq(-1,1,0.5))+
+  xlab("NMDS1")+
+  ylab("NMDS2")+
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.title=element_blank(), panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="none")
+g
+
+#Uninfected cases and controls
+#plot nmds
+nmds_Uninf_filt <- metaMDS(mat_filt_Uninf, k=2, trace=TRUE, autotransform=FALSE)
+nmds_Uninf_filt <- metaMDS(mat_filt_Uninf,k=3, trace=TRUE, autotransform=FALSE) #plot=TRUE
+
+NMDS1_Uninf_filt = nmds_Uninf_filt$points[,1]
+NMDS2_Uninf_filt = nmds_Uninf_filt$points[,2]
+NMDS3_Uninf_filt = nmds_Uninf_filt$points[,3]
+
+NMDS_Uninf_filt = data.frame(NMDS1_Uninf_filt=NMDS1_Uninf_filt, NMDS2_Uninf_filt=NMDS2_Uninf_filt, Diarrhea=factor(metadata_Uninf$Diarrhea), 
+                  DEC_Inf=factor(metadata_Uninf$Infection)) # NMDS3=NMDS3,
+
+centroid_Uninf_filt<- NMDS_Uninf_filt%>%
+  group_by(Diarrhea) %>%
+  summarize_at(c("NMDS1_Uninf_filt", "NMDS2_Uninf_filt"), mean)
+
+h <- ggplot(NMDS_Uninf_filt, aes(x=NMDS1_Uninf_filt, y=NMDS2_Uninf_filt)) + 
+  geom_point(aes(col=Diarrhea),size=2.5, alpha =0.8) + 
+  stat_ellipse(aes(color=metadata_Uninf$Diarrhea, fill=metadata_Uninf$Diarrhea), geom="polygon", level =0.95, alpha=0.15)+
+ # geom_point(data=centroid_Uninf_filt, size=5, aes(fill=Diarrhea), shape=21, color="black")+
+  scale_color_manual(values=c("darkgoldenrod2", "darkolivegreen4"), labels=c("Uninfected cases", "Uninfected controls"))+
+  scale_fill_manual(values=c("darkgoldenrod2", "darkolivegreen4"), labels=c("Uninfected cases", "Uninfected controls"))+
+  scale_x_continuous( labels = scales::comma)+
+  scale_y_continuous( labels = scales::comma)+
+  scale_y_continuous(breaks=seq(-1,1,0.5))+
+  scale_x_continuous(breaks=seq(-1,1,0.5))+
+  xlab("NMDS1")+
+  ylab("NMDS2")+
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.title=element_blank(), panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="none")
+h
+```
+#NMDS stress values
+```{r message=FALSE, warning=FALSE}
+#16S with E. coli
+bray_inf_cc$stress
+bray_uninf_cc$stress
+
+#16S without E. coli
+bray_inf_cc_filt$stress
+bray_uninf_cc_filt$stress
+
+#MASH with E. coli
+nmds_Inf$stress
+nmds_Uninf$stress
+
+
+#MASH without E.coli
+nmds_Inf_filt$stress
+nmds_Uninf_filt$stress
+```
+#PERMANOVA testing
+```{r message=FALSE, warning=FALSE}
+#16 with E. coli
+#calculate distance matrices
+phy_inf_bray<-phyloseq::distance(phy_inf, method="bray")
+phy_uninf_bray<-phyloseq::distance(phy_uninf, method="bray")
+
+#Symptomatic v. asymptomatic DEC infections
+set.seed(123456)
+adonis2(phy_inf_bray~meta_phy_inf$Diarrhea, data=meta_phy_inf, permutations=10000, method="bray", trace=FALSE)
+#Uninfected cases v. controls
+set.seed(123456)
+adonis2(phy_uninf_bray~meta_phy_uninf$Diarrhea, data=meta_phy_uninf, permutations=10000, method="bray")
+  
+#MASH with E. coli
+#Symptomatic v. asymptomatic DEC infections
+set.seed(123456)
+adonis2(mat_Inf~metadata_Inf$Diarrhea, data=metadata_Inf, permutation=10000) #Uninfected cases v. controls
+set.seed(123456)
+adonis2(mat_Uninf~metadata_Uninf$Diarrhea, data=metadata_Uninf, permutation=10000) 
+
+#16S without E. coli
+#calculate distance matrices
+phy_filt_inf_bray<-phyloseq::distance(phy_filt_inf, method="bray")
+phy__filt_uninf_bray<-phyloseq::distance(phy_filt_uninf, method="bray")
+
+#Symptomatic v. asymptomatic DEC infections
+set.seed(123456)
+adonis2(phy_filt_inf_bray~meta_phy_filt_inf$Diarrhea, data=meta_phy_filt_inf, permutations=10000, method="bray")
+#Uninfected cases v. controls
+set.seed(123456)
+adonis2(phy__filt_uninf_bray~meta_phy_filt_uninf$Diarrhea, data=meta_phy_filt_uninf, permutations=10000, method="bray")
+
+#MASH without E. coli
+#Symptomatic v. asymptomatic DEC infections
+set.seed(123456)
+adonis2(mat_filt_Inf~metadata_Inf$Diarrhea, data=metadata_Inf, permutation=10000) 
+#Uninfected cases v. controls
+set.seed(123456)
+adonis2(mat_filt_Uninf~metadata_Uninf$Diarrhea, data=metadata_Uninf, permutation=10000) 
+```
+#beta dispersion testing
+```{r message=FALSE, warning=FALSE}
+#16 with E. coli
+anova(betadisper(phy_inf_bray, meta_phy_inf$cc, type=c("centroid")))
+anova(betadisper(phy_uninf_bray, meta_phy_uninf$cc, type=c("centroid")))
+
+#MASH with E. coli
+anova(betadisper(as.dist(mat_Inf), metadata_Inf$Diarrhea, type=c("centroid")))
+anova(betadisper(as.dist(mat_Uninf), metadata_Uninf$Diarrhea, type=c("centroid")))
+
+#16 without E. coli
+anova(betadisper(phy_filt_inf_bray, meta_phy_filt_inf$Diarrhea, type=c("centroid")))
+anova(betadisper(phy__filt_uninf_bray, meta_phy_filt_uninf$Diarrhea, type=c("centroid")))
+
+#MASH without E. coli
+anova(betadisper(as.dist(mat_filt_Inf), metadata_Inf$Diarrhea, type=c("centroid")))
+anova(betadisper(as.dist(mat_filt_Uninf), metadata_Uninf$Diarrhea, type=c("centroid")))
+```
+
+#manuscript figures
+#extract figure legends
+```{r message=FALSE, warning=FALSE}
+leg_inf<-ggplot(c$data, c$mapping)+
+  geom_point(size=2, alpha=0.8)+
+  stat_ellipse(aes(fill=cc), geom="polygon", level=0.95, alpha=0.15)+
+  scale_color_manual(values=c("coral2", "steelblue3"), labels=c("Symptomatic DEC infections", "Asymptomatic DEC infections"))+
+  scale_fill_manual(values=c("coral2", "steelblue3"), labels=c("Symptomatic DEC infections", "Asymptomatic DEC infections"))+
+   xlab("NMDS1")+
+  ylab("NMDS2")+
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.title=element_blank(), panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="left", legend.text=element_text(size=12))
+
+legend_inf<-as_ggplot(get_legend(leg_inf))+theme(plot.margin=unit(c(0,0,0,0), "cm"))
+legend_inf
+
+
+leg_uninf<-ggplot(d$data,c$mapping)+
+  geom_point(size=2, alpha=0.8)+
+  stat_ellipse(aes(fill=cc), geom="polygon", level=0.95, alpha=0.15)+
+  scale_color_manual(values=c("darkgoldenrod2", "darkolivegreen4"), labels=c("Uninfected cases", "Uninfected controls"))+
+  scale_fill_manual(values=c("darkgoldenrod2", "darkolivegreen4"), labels=c("Uninfected cases", "Uninfected controls"))+
+   xlab("NMDS1")+
+  ylab("NMDS2")+
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.title=element_blank(), panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="left", legend.text=element_text(size=12))
+
+legend_uninf<-as_ggplot(get_legend(leg_uninf))+theme(plot.margin=unit(c(0,0,0,0), "cm"))
+legend_uninf
+
+legends<-plot_grid(legend_inf, NULL, legend_uninf, nrow=1, align="hv", rel_widths = c(1,-0.5,1))
+legends
+```
+
+
+#multiplot with E.coli
+```{r message=FALSE, warning=FALSE}
+#with E. coli
+i<-plot_grid(a1, b1, ncol=2, align="hv", labels=c("A", "B"))
+i_title<-ggdraw()+
+  draw_label("16S rRNA amplicon Bray-Curtis distances", x=0, hjust=0)+
+  theme(plot.margin=margin(0,0,0,7))
+j<-plot_grid(i_title, i, ncol=1, rel_heights=c(0.1,1))
+
+k<-plot_grid(e, f,ncol=2, align="hv", labels=c("C", "D"))
+k_title<-ggdraw()+
+  draw_label("Shotgun metagenome Mash distances", x=0, hjust=0)+
+  theme(plot.margin=margin(0,0,0,7))
+l<-plot_grid(k_title, k, ncol=1, rel_heights=c(0.1,1))
+
+m<-plot_grid(j, l, legends, ncol=1, nrow=3, rel_heights = c(5, 5, 1), rel_widths=c(10, 10, 1))
+m1<-m+draw_text("PERMANOVA, p=0.12", x=0.17, y=0.94, size=10)+
+     draw_text("PERMANOVA, p=0.036", x=0.67, y=0.94, size=10)+
+     draw_text("PERMANOVA, p=0.13", x=0.1725, y=0.485, size=10)+
+     draw_text("PERMANOVA, p=0.17", x=0.6725, y=0.485, size=10)
+m1
+```
+
+#multiplot without E.coli
+```{r message=FALSE, warning=FALSE}
+#without E. coli
+n<-plot_grid(c1, d1, ncol=2, align="hv", labels=c("A", "B"))
+n_title<-ggdraw()+
+  draw_label("16S rRNA amplicon Bray-Curtis distances", x=0, hjust=0)+
+  theme(plot.margin=margin(0,0,0,7))
+o<-plot_grid(n_title, n, ncol=1, rel_heights=c(0.1,1))
+
+p<-plot_grid(g, h,ncol=2, align="hv", labels=c("C", "D"))
+p_title<-ggdraw()+
+  draw_label("Shotgun metagenome Mash distances", x=0, hjust=0)+
+  theme(plot.margin=margin(0,0,0,7))
+q<-plot_grid(p_title, p, ncol=1, rel_heights=c(0.1,1))
+
+r<-plot_grid(o, q, legends, ncol=1, nrow=3, rel_heights = c(5, 5, 1), rel_widths=c(10, 10, 1))
+r1<-r+draw_text("PERMANOVA, p=0.061", x=0.17, y=0.94, size=10)+
+     draw_text("PERMANOVA, p=0.14", x=0.67, y=0.94, size=10)+
+     draw_text("PERMANOVA, p=0.26", x=0.1725, y=0.485, size=10)+
+     draw_text("PERMANOVA, p=0.20", x=0.6725, y=0.485, size=10)
+
+r1
+```
