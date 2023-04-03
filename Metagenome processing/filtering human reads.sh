@@ -27,4 +27,8 @@ bmtagger.sh -b reference.bitmask -x reference.srprism -T tmp -q0 -1
 
 #then need to filter host reads from samples using enveomics script FastA.filter.pl
 
+<<<<<<< HEAD
+=======
+#also used to remove E. coli reads by replacing human genomome file with E. coli reference genome
+>>>>>>> e3d87d7ce40d2207f6116ac61470f0452e975950
 
