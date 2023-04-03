@@ -1,5 +1,4 @@
-#!/bin/bash
-
+#! usr/bin/bash
 #use bmtagger to remove human reads from metagenome (methods summarized here: https://www.hmpdacc.org/hmp/doc/HumanSequenceRemoval_SOP.pdf)
 
 #install bmtagger in conda environment
@@ -20,13 +19,7 @@ srprism mkindex -i GRCh38_latest_genomic.fna -o GRCh38_latest_genomic.srprism -M
 makeblastdb -in GRCh38_latest_genomic.fna -dbtype nucl
 
 #run BMtagger
-bmtagger.sh -b reference.bitmask -x reference.srprism -T tmp -q0 -1
-./bmtagger.sh -b GRCh38_latest_genomic.bitmask -x GRCh38_latest_genomic.srprism -T /tmp/ -q0 -1 /data/data_GATech/EcoZUR/metagenomes/EcoZUR_symp_asymp/E.coli_MAGs/Reads_symp_asymp_E.coli_analysis/MG_24_R1_fastq_gz.CoupledReads.fa -o MG_24_R1_fastq.gz.CoupledReads_filtered.fa -X 
+for f in *.fa; do  bmtagger.sh -b GRCh38_latest_genomic.bitmask -x GRCh38_latest_genomic.srprism -T ~/scratch -q0 -1 $f -o $f.human_reads_removed.fa -X; done
 
-#getting an error here, possibly a problem with sprism?
-#try https://sourceforge.net/p/hmscan/discussion/general/thread/a38c690776/?limit=25
-#got to work by adding -pass false at line 34 of bmtagger.sh (so it will process as single-end reads)
-
-#then need to filter host reads from samples using enveomics script FastA.filter.pl
-
+#also used to remove E. coli reads for some analyses by replacing human genomome file with E. coli reference genome
 
