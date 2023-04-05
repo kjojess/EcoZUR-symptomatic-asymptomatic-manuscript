@@ -14,7 +14,7 @@ cd ~/16S_EcoZUR_qiime2/symp_asymp
 qiime tools import --type 'SampleData[PairedEndSequencesWithQuality]' --input-path EcoZUR_manifest_all_format.tsv --output-path ./EcoZUR.qza --input-format PairedEndFastqManifestPhred33V2
 
 #View seq counts and quality scores
-qiime demux summarize --i-data ../old/EcoZUR_all/EcoZUR.qza --o-visualization EcoZUR_demux.qzv
+qiime demux summarize --i-data EcoZUR.qza --o-visualization EcoZUR_demux.qzv
 
 #dada2 denoising (also merges paired reads)
 qiime dada2 denoise-paired --i-demultiplexed-seqs EcoZUR.qza --p-trunc-len-f 240 --p-trunc-len-r 240 --p-n-threads 12  --o-table table_EcoZUR.qza --o-representative-sequences rep_set_EcoZUR.qza  --o-denoising-stats stats_EcoZUR.qza
