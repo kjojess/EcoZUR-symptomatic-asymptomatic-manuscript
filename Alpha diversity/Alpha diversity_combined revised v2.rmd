@@ -2,11 +2,11 @@
 title: "Alpha diversity"
 author: "Kelsey Jesser"
 date: "2/24/2023"
-output: html_document
+output: pdf_document
 ---
 #clear R env
 ```{r message=FALSE, warning=FALSE}
-#rm(list = ls())
+rm(list = ls())
 ```
 
 #load libraries
@@ -126,13 +126,6 @@ phy_Ec_removed_Uninf_control_inext<-prepare_inext(phy_Ec_removed_Uninf_control)
 #Run iNEXT
 ```{r message=FALSE, warning=FALSE}
 #with E. coli
-#all 16S samples
-phy_inext_out<-iNEXT(phy_inext, q=0, datatype="abundance")
-
-#by DEC infection status
-phy_Inf_inext_out<-iNEXT(phy_Inf_inext, q=0, datatype="abundance")
-phy_Uninf_inext_out<-iNEXT(phy_Uninf_inext, q=0, datatype="abundance")
-
 #by diarrhea and DEC infection status
 phy_Inf_case_inext_out<-iNEXT(phy_Inf_case_inext, q=0, datatype="abundance")
 phy_Inf_control_inext_out<-iNEXT(phy_Inf_control_inext, q=0, datatype="abundance")
@@ -140,13 +133,6 @@ phy_Uninf_case_inext_out<-iNEXT(phy_Uninf_case_inext, q=0, datatype="abundance")
 phy_Uninf_control_inext_out<-iNEXT(phy_Uninf_control_inext, q=0, datatype="abundance")
 
 #without E. coli
-#all 16S samples
-phy_Ec_removed_inext_out<-iNEXT(phy_Ec_removed_inext, q=0, datatype="abundance")
-
-#by DEC infection status
-phy_Ec_removed_Inf_inext_out<-iNEXT(phy_Ec_removed_Inf_inext, q=0, datatype="abundance")
-phy_Ec_removed_Uninf_inext_out<-iNEXT(phy_Ec_removed_Uninf_inext, q=0, datatype="abundance")
-
 #by diarrhea and DEC infection status
 phy_Ec_removed_Inf_case_inext_out<-iNEXT(phy_Ec_removed_Inf_case_inext, q=0, datatype="abundance")
 phy_Ec_removed_Inf_control_inext_out<-iNEXT(phy_Ec_removed_Inf_control_inext, q=0, datatype="abundance")
