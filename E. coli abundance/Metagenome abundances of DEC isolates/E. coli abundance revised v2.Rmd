@@ -1,0 +1,351 @@
+---
+title: "E. coli abundance comparisons"
+author: "Kelsey Jesser"
+date: "10/20/2021"
+output: html_document
+---
+```{r}
+rm(list = ls())
+```
+
+#load libraries
+```{r}
+library(readr)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(reshape2)
+library(gplots)
+library(ggpubr)
+library(ggthemr)
+library(forcats)
+library(ggpmisc)
+library(cowplot)
+library(ggtext)
+```
+
+#set theme
+```{r}
+ggthemr('fresh')
+```
+
+#import data
+```{r}
+qPCR<-read.csv("qpCR abundances v2.csv")
+isolate<-read.csv("Isolate abundances v3.csv")
+```
+
+#a few calculations
+```{r}
+#percent E. coli by qPCR (uida/total bac copies)
+qPCR$perc_E.coli<-qPCR$UIDA_copies_ng/qPCR$Total_Bacteria_copies_ng * 100
+
+#convert isolate rel abundances to percents
+isolate$MG.abundance.perc<-isolate$MG.abundance *100
+```
+
+#filter and melt data for symp/asymp abundance barplots
+```{r}
+#qPCR
+qPCR_melt<-qPCR %>% subset(Include=='y' & pathotype=="pathpos") %>%
+  melt(id.vars=c("Sample_ID", "cc", "symp.asymp", "pathotype", "UIDA_stdev"), variable.name=("measurement"), value.name="value")
+qPCR_melt$value<-as.numeric(qPCR_melt$value)
+
+#isolate
+isolate_melt<-isolate %>% subset(Include=="yes") %>%
+  melt(id.vars=c("E..coli.isolate.ID", "Sample_ID", "cc", "symp.asymp", "Pathotype.match", "Rotavirus."), variable.name="measurement", valu.name="value")%>%
+  subset(measurement=="MG.abundance.perc")
+isolate_melt$value<-as.numeric(isolate_melt$value)
+```
+
+#qPCR plots
+```{r}
+#uida (total E. coli target)
+#barplot
+df_uida<-qPCR_melt %>% 
+  subset(measurement=="UIDA_copies_ng") %>%
+  drop_na("value")
+
+df_uida.mean = df_uida %>% 
+  group_by(symp.asymp) %>% 
+  mutate(mean = mean(value))
+
+uida_bar<-qPCR_melt %>% 
+  subset(measurement=="UIDA_copies_ng") %>%
+  drop_na("value")%>%
+  arrange(value) %>%
+  mutate(Sample_ID=fct_reorder(Sample_ID, value)) %>%
+  mutate(Sample_ID=fct_reorder(Sample_ID, symp.asymp)) %>%
+  ggplot(aes(fill=symp.asymp, y=value, x=Sample_ID))+
+    geom_bar(stat="identity")+
+    scale_fill_manual(values=c("Symptomatic"="coral2", "Asymptomatic"="steelblue3"))+
+    ggtitle("E. coli qPCR abundance")+
+    ylab("E. coli abundance (uida copies/ng)")+
+    xlab(NULL)+
+    geom_errorbar(data=df_uida.mean, aes(Sample_ID, ymax = mean, ymin = mean), size=0.5, linetype = "longdash", inherit.aes = F, width = 1, color="black")+
+    geom_errorbar(aes(ymin=value-UIDA_stdev, ymax=value+UIDA_stdev, width=0.3), color="black")+
+    theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), axis.text.x=element_text(angle=90, vjust=0.5, hjust=1), legend.title=element_blank(), panel.border=element_rect(color="black", fill=NA, size=0.5))
+
+#boxplot
+uida_box<-qPCR_melt %>% 
+  subset(measurement=="UIDA_copies_ng") %>%
+  drop_na("value")%>%
+  ggplot(aes(fill=symp.asymp, y=value, x=symp.asymp))+
+    geom_boxplot()+
+    scale_fill_manual(values=c("Symptomatic"="coral2", "Asymptomatic"="steelblue3"))+
+    ylab("% abundance")+
+    xlab(NULL)+
+    #stat_compare_means(method="wilcox.test", label.x=0.53)+
+    theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(),  legend.position="none", panel.border=element_rect(color="black", fill=NA, size=0.5), axis.text.x=(element_text(size=8)))
+
+#perc E.coli (uida/total back 16S target)
+#barplot
+df_perc_E.coli<-qPCR_melt %>% 
+  subset(measurement=="perc_E.coli") %>%
+  drop_na("value")
+
+df_perc_E.coli.mean = df_perc_E.coli %>% 
+  group_by(symp.asymp) %>% 
+  mutate(mean = mean(value))
+
+perc_E.coli_bar<-qPCR_melt %>% 
+  subset(measurement=="perc_E.coli") %>%
+  drop_na("value")%>%
+  arrange(value) %>%
+  mutate(Sample_ID=fct_reorder(Sample_ID, value)) %>%
+  mutate(Sample_ID=fct_reorder(Sample_ID, symp.asymp)) %>%
+  ggplot(aes(fill=symp.asymp, y=value, x=Sample_ID))+
+    geom_bar(stat="identity")+
+    scale_fill_manual(values=c("Symptomatic"="coral2", "Asymptomatic"="steelblue3"), name="DEC infection type")+
+    ggtitle(expression(paste(italic("E. coli")," qPCR abundance")))+
+    ylab("% abundance")+
+    xlab(NULL)+
+    geom_errorbar(data=df_perc_E.coli.mean, aes(Sample_ID, ymax = mean, ymin = mean), size=0.5, linetype = "longdash", inherit.aes = F, width = 1, color="black")+
+   scale_y_continuous(breaks=seq(0,8,4))+
+   theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), axis.text.x=element_text(angle=90, vjust=0.5, hjust=1), panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="none",)
+
+#boxplot
+perc_E.coli_box<-qPCR_melt %>% 
+  subset(measurement=="perc_E.coli") %>%
+  drop_na("value")%>%
+  ggplot(aes(fill=symp.asymp, y=value, x=symp.asymp))+
+    geom_boxplot()+
+    scale_fill_manual(values=c("Symptomatic"="coral2", "Asymptomatic"="steelblue3"), name="DEC infection type")+
+    xlab(NULL)+
+    scale_y_continuous(breaks=seq(0,8,4))+
+    theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.position="none", panel.border=element_rect(color="black", fill=NA, size=0.5), axis.title.y=element_blank(), axis.text.x=(element_text(size=8)))
+
+uida_plot<- ggdraw() +
+    draw_plot(uida_bar) +
+    draw_plot(uida_box, x = 0.675, y = 0.55, width = 0.25, height = 0.325)
+
+uida_plot
+
+perc_E.coli_plot<- ggdraw() +
+    draw_plot(perc_E.coli_bar) +
+    draw_plot(perc_E.coli_box, x = 0.675, y = 0.55, width = 0.25, height = 0.325)
+
+perc_E.coli_plot
+
+
+  
+```
+
+#Isolate abundance plots
+```{r}
+#isolate abundance
+#barplot
+df_isolate.mean = isolate_melt %>% 
+  group_by(symp.asymp) %>% 
+  mutate(mean = mean(value))
+
+isolate_bar<-isolate_melt %>% 
+  #arrange(value) %>%
+  mutate(Sample_ID=fct_reorder(Sample_ID, value)) %>%
+  mutate(Sample_ID=fct_reorder(Sample_ID, symp.asymp)) %>%
+  ggplot(aes(fill=symp.asymp, y=value, x=Sample_ID))+
+    geom_bar(stat="identity")+
+    scale_fill_manual(values=c("Symptomatic"="coral2", "Asymptomatic"="steelblue3"), name="DEC infection type")+
+    ggtitle("DEC isolate metagenome abundance")+
+    ylab("% abundance")+
+    xlab(NULL)+
+    geom_errorbar(data=df_isolate.mean, aes(Sample_ID, ymax = mean, ymin = mean), size=0.5, linetype = "longdash", inherit.aes = F, width = 1, color="black")+
+    theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), axis.text.x=element_text(angle=90, vjust=0.5, hjust=1),  panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="none", plot.title=element_text(face="plain"))
+
+
+#boxplot
+isolate_box<-isolate_melt %>% 
+  ggplot(aes(fill=symp.asymp, y=value, x=symp.asymp))+
+    geom_boxplot()+
+    scale_fill_manual(values=c("Symptomatic"="coral2", "Asymptomatic"="steelblue3"), name="DEC infection type")+
+    xlab(NULL)+
+    theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.position="none", panel.border=element_rect(color="black", fill=NA, size=0.5), axis.title.y=element_blank(), axis.text.x=(element_text(size=8)))
+
+isolate_plot<-ggdraw() +
+    draw_plot(isolate_bar) +
+    draw_plot(isolate_box, x = 0.675, y = 0.55, width = 0.25, height = 0.325)
+
+isolate_plot
+
+```
+
+
+#qPCR stats
+```{r}
+#Total E. coli (uida gene copies) symp.asymp comparison
+qPCR_melt_symp_uida<-qPCR_melt %>% 
+  subset(symp.asymp=="Symptomatic" & measurement=="UIDA_copies_ng") %>%
+  drop_na("value")
+qPCR_melt_asymp_uida<-qPCR_melt %>%
+  subset(symp.asymp=="Asymptomatic" & measurement=="UIDA_copies_ng") %>%
+  drop_na("value")
+
+wilcox.test(qPCR_melt_symp_uida$value, qPCR_melt_asymp_uida$value)
+
+#Percent E. coli symp.asymp comparison
+qPCR_melt_symp_perc<-qPCR_melt %>%
+  subset(symp.asymp=="Symptomatic" & measurement=="perc_E.coli") %>%
+  drop_na("value")
+#Percent E. coli symp.asymp comparison
+qPCR_melt_asymp_perc<-qPCR_melt %>%
+  subset(symp.asymp=="Asymptomatic" & measurement=="perc_E.coli") %>%
+  drop_na("value")
+
+wilcox.test(qPCR_melt_symp_perc$value, qPCR_melt_asymp_perc$value)
+
+```
+
+#stats
+```{r}
+#isolate
+isolate_melt_symp<-isolate_melt %>% 
+  subset(symp.asymp=="Symptomatic") %>%
+  drop_na("value")
+isolate_melt_asymp<-isolate_melt %>%
+  subset(symp.asymp=="Asymptomatic") %>%
+  drop_na("value")
+
+wilcox.test(isolate_melt_symp$value, isolate_melt_asymp$value)
+
+#qPCR
+qPCR_melt_symp<-qPCR_melt %>% 
+  subset(symp.asymp=="Symptomatic") %>%
+  drop_na("value")
+qPCR_melt_asymp<-qPCR_melt %>%
+  subset(symp.asymp=="Asymptomatic") %>%
+  drop_na("value")
+
+wilcox.test(qPCR_melt_symp$value, isolate_melt_asymp$value)
+```
+
+#qPCR and metagenome abundance comparisons
+```{r}
+#join abundance data
+isolate_qPCR<- left_join(isolate, qPCR, by=c("Sample_ID"))
+
+#formula
+formula <- y ~ x 
+
+#E. coli by qPCR v. E.coli islate MG abundance comparison
+isolate_qPCR_scat_uida<-ggplot(isolate_qPCR, aes(x=UIDA_copies_ng, y=MG.abundance.perc))+
+  geom_point(size=3)+
+  xlab("qPCR abundance (uida copies/ng)")+
+  ylab("isolate metagenome abundance (%)")+
+  geom_smooth(method=lm, linetype="dashed", color="black", se=FALSE)+
+  stat_poly_eq(aes(label = paste(..rr.label..)), formula = formula, parse = TRUE, label.y.npc=.99, label.x.npc=0.03)+
+  stat_fit_glance(method = 'lm', method.args = list(formula = formula), geom = 'text', aes(label = paste("p = ", signif(..p.value.., digits = 2), sep = "")))+
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.position="none", panel.border=element_rect(color="black", fill=NA, size=0.5))
+isolate_qPCR_scat_uida
+
+#percent E. coli
+isolate_qPCR_scat_perc<-ggplot(isolate_qPCR, aes(x=perc_E.coli, y=MG.abundance.perc))+
+  geom_point(size=3)+
+  xlab(expression(paste(italic("E. coli")," qPCR abundance (%)")))+
+  ylab("DEC isolate metagenome abundance (%)")+
+  geom_smooth(method=lm, linetype="dashed", color="black", se=FALSE)+
+  stat_poly_eq(aes(label = paste(..rr.label..)), formula = formula, parse = TRUE, label.y.npc=.99, label.x.npc=0.03)+
+  stat_fit_glance(method = 'lm', method.args = list(formula = formula), geom = 'text', aes(label = paste("p = ", signif(..p.value.., digits = 2), sep = "")))+
+  theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.position="none", panel.border=element_rect(color="black", fill=NA, size=0.5))
+isolate_qPCR_scat_perc
+
+#Spearman correlations
+corr_isolate_uida<-cor.test(isolate_qPCR$UIDA_copies_ng, isolate_qPCR$MG.abundance, method=c("pearson"), use="complete.obs")
+corr_isolate_uida
+corr_isolate_perc_E.coli<-cor.test(isolate_qPCR$perc_E.coli, isolate_qPCR$MG.abundance, method=c("pearson"), use="complete.obs")
+corr_isolate_perc_E.coli
+
+```
+#extract legend
+```{r}
+isolate_legend<-isolate_melt %>% 
+  #arrange(value) %>%
+  mutate(Sample_ID=fct_reorder(Sample_ID, value)) %>%
+  mutate(Sample_ID=fct_reorder(Sample_ID, symp.asymp)) %>%
+  ggplot(aes(fill=symp.asymp, y=value, x=Sample_ID))+
+    geom_bar(stat="identity")+
+    scale_fill_manual(values=c("Symptomatic"="coral2", "Asymptomatic"="steelblue3"), name="DEC infection type")+
+    ggtitle("DEC isolate metagenome abundance")+
+    ylab("% abundance")+
+    xlab(NULL)+
+    geom_errorbar(data=df_isolate.mean, aes(Sample_ID, ymax = mean, ymin = mean), size=0.5, linetype = "longdash", inherit.aes = F, width = 1, color="black")+
+    theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), axis.text.x=element_text(angle=90, vjust=0.5, hjust=1),  panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="bottom",legend.title=element_text(face="bold"))
+
+legend<-get_legend(isolate_legend)
+l<-as_ggplot(legend)
+l
+```
+
+
+#multiplots
+```{r}
+#barplots
+plot_grid(isolate_bar, uida_bar, perc_E.coli_bar, ncol=2)
+
+#boxplots
+plot_grid(isolate_box, uida_box, perc_E.coli_box, ncol=2)
+
+#comparisons
+isolate_qPCR_scat_perc
+
+#inset multiplot
+p<-plot_grid(isolate_plot, 
+             perc_E.coli_plot,
+             l,
+             ncol=1, align="hv", 
+             labels=c("A", "B", ""), 
+             label_size=20, 
+             rel_heights = c(1, 1, 0.25), 
+             rel_widths=c(1, .9, 1))
+q<-plot_grid(p)+
+    draw_text("Wilcoxon, p=0.0049", x = 0.1725, y = .925, size = 10)+
+    draw_text("Wilcoxon, p=0.11", x=0.175, y=0.475, size = 10)
+q
+
+```
+
+#nicely formatted isolate barplot
+```{r}
+isolate_bar<-isolate_melt %>% 
+  #arrange(value) %>%
+  mutate(Sample_ID=fct_reorder(Sample_ID, value)) %>%
+  mutate(Sample_ID=fct_reorder(Sample_ID, symp.asymp)) %>%
+  ggplot(aes(fill=symp.asymp, y=value, x=Sample_ID))+
+    geom_bar(stat="identity")+
+    scale_fill_manual(values=c("Symptomatic"="coral2", "Asymptomatic"="steelblue3"), labels=c("Symptomatic DEC infections", "Asymptomatic DEC infections"))+
+    #ggtitle("DEC isolate metagenome abundance")+
+    ylab("% abundance")+
+    xlab(NULL)+
+    geom_errorbar(data=df_isolate.mean, aes(Sample_ID, ymax = mean, ymin = mean), size=0.5, linetype = "longdash", inherit.aes = F, width = 1, color="black")+
+    theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), axis.text.x=element_text(angle=90, vjust=0.5, hjust=1),  panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="bottom", plot.title=element_text(face="plain"), legend.title= element_blank(), legend.text = element_text(face="bold"))
+
+isolate_plot<-ggdraw() +
+    draw_plot(isolate_bar) +
+    draw_plot(isolate_box, x = 0.675, y = 0.6, width = 0.25, height = 0.325)
+
+isolate_plot<-plot_grid(isolate_plot)+draw_text("Wilcoxon, p=0.0049", x = 0.1725, y = .95, size = 10)
+isolate_plot
+```
+
+
+
+

@@ -6,7 +6,7 @@ output: pdf_document
 ---
 #clear R env
 ```{r message=FALSE, warning=FALSE}
-rm(list = ls())
+#rm(list = ls())
 ```
 
 #load libraries
@@ -61,7 +61,7 @@ phy<- subset_samples(phy, rota!="1")
 phy<-subset_samples(phy, contaminated!="1")
 
 #remove E. coli
-phy_Ec_removed<-subset_taxa(phy, (Species!="coli") | is.na(Class))
+phy_Ec_removed<-subset_taxa(phy, (Species!="coli") | is.na(Species))
 
 #add diarrhea and infection status metadata to phyloseq object
 meta<-read.csv(file = "16S_metadata_DEC_diarrhea.csv")
@@ -96,59 +96,28 @@ phy_Ec_removed_Uninf_control<-subset_samples(phy_Ec_removed_Uninf, cc=="Control"
 #convert to iNEXT compatible formats
 ```{r message=FALSE, warning=FALSE}
 #with  E. coli
-#all samples
 phy_inext<-prepare_inext(phy)
-
-#by DEC infection status
-phy_Inf_inext<-prepare_inext(phy_Inf)
-phy_Uninf_inext<-prepare_inext(phy_Uninf)
-
-#by diarrhea and DEC infection status
-phy_Inf_case_inext<-prepare_inext(phy_Inf_case)
-phy_Inf_control_inext<-prepare_inext(phy_Inf_control)
-phy_Uninf_case_inext<-prepare_inext(phy_Uninf_case)
-phy_Uninf_control_inext<-prepare_inext(phy_Uninf_control)
 
 #without E. coli
 phy_Ec_removed_inext<-prepare_inext(phy_Ec_removed)
-
-#by DEC infection status
-phy_Ec_removed_Inf_inext<-prepare_inext(phy_Ec_removed_Inf)
-phy_Ec_removed_Uninf_inext<-prepare_inext(phy_Ec_removed_Uninf)
-
-#by diarrhea and DEC infection status
-phy_Ec_removed_Inf_case_inext<-prepare_inext(phy_Ec_removed_Inf_case)
-phy_Ec_removed_Inf_control_inext<-prepare_inext(phy_Ec_removed_Inf_control)
-phy_Ec_removed_Uninf_case_inext<-prepare_inext(phy_Ec_removed_Uninf_case)
-phy_Ec_removed_Uninf_control_inext<-prepare_inext(phy_Ec_removed_Uninf_control)
 ```
 
 #Run iNEXT
 ```{r message=FALSE, warning=FALSE}
 #with E. coli
-#by diarrhea and DEC infection status
-phy_Inf_case_inext_out<-iNEXT(phy_Inf_case_inext, q=0, datatype="abundance")
-phy_Inf_control_inext_out<-iNEXT(phy_Inf_control_inext, q=0, datatype="abundance")
-phy_Uninf_case_inext_out<-iNEXT(phy_Uninf_case_inext, q=0, datatype="abundance")
-phy_Uninf_control_inext_out<-iNEXT(phy_Uninf_control_inext, q=0, datatype="abundance")
+#phy_inext_out<-iNEXT(phy_inext, q=0, datatype="abundance")
 
 #without E. coli
-#by diarrhea and DEC infection status
-phy_Ec_removed_Inf_case_inext_out<-iNEXT(phy_Ec_removed_Inf_case_inext, q=0, datatype="abundance")
-phy_Ec_removed_Inf_control_inext_out<-iNEXT(phy_Ec_removed_Inf_control_inext, q=0, datatype="abundance")
-phy_Ec_removed_Uninf_case_inext_out<-iNEXT(phy_Ec_removed_Uninf_case_inext, q=0, datatype="abundance")
-phy_Ec_removed_Uninf_control_inext_out<-iNEXT(phy_Ec_removed_Uninf_control_inext, q=0, datatype="abundance")
-
+#phy_Ec_removed_inext_out<-iNEXT(phy_Ec_removed_inext, q=0, datatype="abundance")
 ```
 
 Plot rarefaction curves
 ```{r message=FALSE, warning=FALSE}
-
-rare<- ggiNEXT(phy_inext_out, type=1, se=TRUE, facet.var="none", color.var="none", grey=TRUE)+
+#rare<- ggiNEXT(phy_inext_out, type=1, se=TRUE, facet.var="none", color.var="none", grey=TRUE)+
   theme(legend.position="none")+
   ggtitle("All samples")+
   labs(y="Diversity", x="ASVs")
-rare
+#rare
 ```
 
 #Format data to plot by diarrhea and DEC infection status
@@ -173,7 +142,7 @@ AsyEst_phy_merged<-AsyEst_phy %>%
 
 #without E. coli
 #extract metadata from phyloseq and reformat
-metadata<-sample_data(phy_Ec_removed)
+metadata<-sample_data(phy_filt)
 metadata<-tibble::rownames_to_column(metadata, "sample")
 metadata<-data.frame(metadata)
 
@@ -235,7 +204,7 @@ AsyEst_phy_Ec_removed_merged_Shanon<- subset(AsyEst_phy_Ec_removed_merged, Diver
 Shan_Ec_removed<-ggplot(AsyEst_phy_Ec_removed_merged_Shanon, aes(y=Estimator, x=DEC_infection, fill=Infection_diarrhea))+
   geom_boxplot()+
   ylab("Shannon index")+
-  stat_compare_means(method="wilcox.test", label.y=21.5, size=3.5)+
+  stat_compare_means(method="wilcox.test", label.y=62.5, size=3.5)+
   scale_fill_manual(values=c("Infected_Case"="coral2", "Infected_Control"="steelblue3", "Uninfected_Case"="darkgoldenrod2", "Uninfected_Control"="darkolivegreen4"), labels=c("Symptomatic DEC infections", "Asymptomatic DEC infections", "Uninfected cases", "Uninfected controls"))+
   theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.title=element_blank(), legend.position= "none", panel.border=element_rect(color="black", fill=NA, size=0.5), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
 Shan_Ec_removed
@@ -246,7 +215,7 @@ AsyEst_phy_Ec_removed_merged_Simpson<- subset(AsyEst_phy_Ec_removed_merged, Dive
 Simp_Ec_removed<-ggplot(AsyEst_phy_Ec_removed_merged_Simpson, aes(y=Estimator, x=DEC_infection, fill=Infection_diarrhea))+
   geom_boxplot()+
   ylab("Simpson index")+
-  stat_compare_means(method="wilcox.test", label.y=17, size=3.5)+
+  stat_compare_means(method="wilcox.test", label.y=40, size=3.5)+
   scale_fill_manual(values=c("Infected_Case"="coral2", "Infected_Control"="steelblue3", "Uninfected_Case"="darkgoldenrod2", "Uninfected_Control"="darkolivegreen4"), labels=c("Symptomatic DEC infections", "Asymptomatic DEC infections", "Uninfected cases", "Uninfected controls"))+
   theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.title=element_blank(), legend.position= "none", panel.border=element_rect(color="black", fill=NA, size=0.5), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
 Simp_Ec_removed
@@ -257,7 +226,7 @@ AsyEst_phy_Ec_removed_merged_richness<- subset(AsyEst_phy_Ec_removed_merged, Div
 Obs_Ec_removed<-ggplot(AsyEst_phy_Ec_removed_merged_richness, aes(y=Estimator, x=DEC_infection, fill=Infection_diarrhea))+
   geom_boxplot()+
   ylab("Observed ASVs")+
-  stat_compare_means(method="wilcox.test", label.y=85, size=3.5)+
+  stat_compare_means(method="wilcox.test", label.y=303, size=3.5)+
   scale_fill_manual(values=c("Infected_Case"="coral2", "Infected_Control"="steelblue3", "Uninfected_Case"="darkgoldenrod2", "Uninfected_Control"="darkolivegreen4"), labels=c("Symptomatic DEC infections", "Asymptomatic DEC infections", "Uninfected cases", "Uninfected controls"))+
   theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.title=element_blank(), legend.position= "none", panel.border=element_rect(color="black", fill=NA, size=0.5), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
 Obs_Ec_removed
@@ -279,6 +248,7 @@ nps<-Nonpareil.set(sample, labels=sample, plot.opts=list(plot.observed=FALSE))
 
 summ<-summary.Nonpareil.Set(nps)
 ```
+
 #boxplot
 ```{r message=FALSE, warning=FALSE}
 #format data
@@ -291,6 +261,9 @@ samples<-samples %>%
 summ_samps<-summ %>%
   as.data.frame()%>%
   merge(samples, by=0)
+
+#test for normality
+shapiro.test(summ_samps$diversity) #data is non-normal (p<0.05)
   
 summ_samps$Infection<-factor(summ_samps$Infection, levels=c("Infected", "Uninfected"))
 
@@ -302,32 +275,6 @@ nonpareil<-ggplot(summ_samps, aes(x=Infection, y=diversity, fill=Infection_diarr
   guides(fill=guide_legend(ncol=2))+
   theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.title=element_blank(), legend.position= "none", panel.border=element_rect(color="black", fill=NA, size=0.5), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank())
 nonpareil
-```
-
-#test for differences
-```{r message=FALSE, warning=FALSE}
-#test for normality
-shapiro.test(summ_samps$diversity) #data is non-normal (p<0.05)
-
-#DEC infection status
-summ_Inf<-subset.data.frame(summ_samps, Infection=="Infected", drop=FALSE)
-summ_Uninf<-subset.data.frame(summ_samps, Infection=="Uninfected", drop=FALSE)
-wilcox.test(summ_Inf$diversity, summ_Uninf$diversity) 
-
-#diarrhea status
-summ_case<-subset.data.frame(summ_samps, Diarrhea=="Case", drop=FALSE)
-summ_control<-subset.data.frame(summ_samps, Diarrhea=="Control", drop=FALSE)
-wilcox.test(summ_case$diversity, summ_control$diversity) 
-
-#symptomatic v. asymptomati infections
-summ_Inf_case<-subset.data.frame(summ_Inf, Diarrhea=="Case", drop=FALSE)
-summ_Inf_control<-subset.data.frame(summ_Inf, Diarrhea=="Control", drop=FALSE)
-wilcox.test(summ_Inf_case$diversity, summ_Inf_control$diversity) 
-
-#uninfected cases v. controls
-summ_Uninf_case<-subset.data.frame(summ_Uninf, Diarrhea=="Case", drop=FALSE)
-summ_Uninf_control<-subset.data.frame(summ_Uninf, Diarrhea=="Control", drop=FALSE)
-wilcox.test(summ_Uninf_case$diversity, summ_Uninf_control$diversity) 
 ```
 
 #nonpareil (shotgun metagenome data) without E. coli
@@ -344,19 +291,18 @@ nps_Ec_removed<-Nonpareil.set(sample, labels=sample, plot.opts=list(plot.observe
 
 summ_Ec_removed<-summary.Nonpareil.Set(nps_Ec_removed)
 ```
+
 #boxplot
 ```{r message=FALSE, warning=FALSE}
 #format data
-samples_Ec_removed<-samples_Ec_removed %>%
-  apply(2, str_remove_all, " ") %>%
-  as.data.frame()%>%
-  'rownames<-'(NULL)%>%
-  column_to_rownames(var="sample")
-
 summ_samps_Ec_removed<-summ_Ec_removed %>%
   as.data.frame()%>%
   merge(samples_Ec_removed, by=0)
-  
+
+#test for normality
+shapiro.test(summ_samps_Ec_removed$diversity) #data is non-normal (p<0.05)
+
+#boxplot  
 summ_samps_Ec_removed$Infection<-factor(summ_samps_Ec_removed$Infection, levels=c("Infected", "Uninfected"))
 
 nonpareil_Ec_removed<-ggplot(summ_samps_Ec_removed, aes(x=Infection, y=diversity, fill=Infection_diarrhea))+
@@ -369,35 +315,9 @@ nonpareil_Ec_removed<-ggplot(summ_samps_Ec_removed, aes(x=Infection, y=diversity
 nonpareil_Ec_removed
 ```
 
-#test for differences
-```{r message=FALSE, warning=FALSE}
-#test for normality
-shapiro.test(summ_samps$diversity) #data is non-normal (p<0.05)
-
-#DEC infection status
-summ_Inf<-subset.data.frame(summ_samps, Infection=="Infected", drop=FALSE)
-summ_Uninf<-subset.data.frame(summ_samps, Infection=="Uninfected", drop=FALSE)
-wilcox.test(summ_Inf$diversity, summ_Uninf$diversity) 
-
-#diarrhea status
-summ_case<-subset.data.frame(summ_samps, Diarrhea=="Case", drop=FALSE)
-summ_control<-subset.data.frame(summ_samps, Diarrhea=="Control", drop=FALSE)
-wilcox.test(summ_case$diversity, summ_control$diversity) 
-
-#symptomatic v. asymptomati infections
-summ_Inf_case<-subset.data.frame(summ_Inf, Diarrhea=="Case", drop=FALSE)
-summ_Inf_control<-subset.data.frame(summ_Inf, Diarrhea=="Control", drop=FALSE)
-wilcox.test(summ_Inf_case$diversity, summ_Inf_control$diversity) 
-
-#uninfected cases v. controls
-summ_Uninf_case<-subset.data.frame(summ_Uninf, Diarrhea=="Case", drop=FALSE)
-summ_Uninf_control<-subset.data.frame(summ_Uninf, Diarrhea=="Control", drop=FALSE)
-wilcox.test(summ_Uninf_case$diversity, summ_Uninf_control$diversity) 
-```
-
 #extract legend
 ```{r message=FALSE, warning=FALSE}
-legend_plot<-ggplot(summ_samps_Ec_removed, aes(x=Infection, y=diversity, fill=Infection_diarrhea))+
+legend_plot<-ggplot(summ_samps, aes(x=Infection, y=diversity, fill=Infection_diarrhea))+
   geom_boxplot()+
   scale_fill_manual(values=c("Infected_Case"="coral2", "Infected_Control"="steelblue3", "Uninfected_Case"="darkgoldenrod2", "Uninfected_Control"="darkolivegreen4"), labels=c("Symptomatic DEC infections", "Asymptomatic DEC infections", "Uninfected cases", "Uninfected controls"))+
   stat_compare_means(method="wilcox.test", label.x=0.8, label.y=18, size=3.5)+
@@ -420,4 +340,32 @@ multi_Ec_removed_legend<-plot_grid(multi_Ec_removed, l, ncol=1, rel_heights = c(
 multi_Ec_removed_legend
 ```
 
+#mean diversities
+```{r}
+#with E. coli
+#Shannon, Simpson, Observed
+mean_sd_16S<- AsyEst_phy_merged%>%
+  group_by(Infection_diarrhea, Diversity)%>%
+  summarize(mean_diversity=mean(Estimator), sd_diversity=sd(Estimator))
+mean_sd_16S
+
+#nonpareil
+mean_sd_Np<- summ_samps%>%
+  group_by(Infection_diarrhea)%>%
+  summarize(mean_diversity=mean(diversity), sd_diversity=sd(diversity))
+mean_sd_Np
+
+#without E. coli
+#Shannon, Simpson, Observed
+mean_sd_16S_no_Ec<- AsyEst_phy_Ec_removed_merged%>%
+  group_by(Infection_diarrhea, Diversity)%>%
+  summarize(mean_diversity=mean(Estimator), sd_diversity=sd(Estimator))
+mean_sd_16S_no_Ec
+
+#nonpareil
+mean_sd_Np_Ec_removed<- summ_samps_Ec_removed%>%
+  group_by(Infection_diarrhea)%>%
+  summarize(mean_diversity=mean(diversity), sd_diversity=sd(diversity))
+mean_sd_Np_Ec_removed
+```
 
