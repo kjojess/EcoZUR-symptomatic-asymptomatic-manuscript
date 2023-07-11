@@ -1,4 +1,4 @@
-
+! usr/bin/bash
 #create conda environment and install qiime2
 conda env create -n qiime2-2019.7
 conda install -c qiime2/label/r2019.7 qiime2-2019.7
