@@ -1,0 +1,735 @@
+---
+title: "16S heatmaps"
+author: "Kelsey Jesser"
+date: "7/12/2023"
+output: pdf_document
+---
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+#clear R env
+```{r include=FALSE}
+rm(list = ls())
+```
+
+#load libraries
+```{r include=FALSE}
+library(lefser)
+require(dplyr)
+require(tibble)
+library(qiime2R)
+library(circlize)
+library(ggplot2)
+library(microbiomeMarker)
+library(RColorBrewer)
+library(ggthemr)
+library(plyr)
+library(phyloseq)
+library(tidyverse)
+library(ComplexHeatmap)
+library(microViz)
+library(cowplot)
+library(corncob)
+```
+
+#set theme
+```{r}
+ggthemr('fresh')
+```
+
+#convert qiime2 output to phyloseq object
+```{r include=FALSE} 
+phy<-qza_to_phyloseq("table_EcoZUR.qza", 
+                     "rooted_tree_masked_aligned_rep_set_EcoZUR.qza", 
+                     "taxonomy_EcoZUR.qza", 
+                     "EcoZUR_meta_updated_pathotypes.tsv")
+phy
+```
+
+#filter dataset
+```{r include=FALSE}
+#remove taxa where phylum is ambiguous (these are likely artifacts)
+phy <- subset_taxa(phy, !is.na(Phylum) & !Phylum %in% c("", "uncharacterized"))
+
+#remove chloroplast and mitochondrial sequences
+phy<-subset_taxa(phy, (Class!="Cloroplast") | is.na(Class))
+phy<-subset_taxa(phy, (Family!="mitochondria") | is.na(Class))
+
+#remove taxa that occur <2x and in <10% of samples
+phy = filter_taxa(phy, function(x) sum(x > 2) > (0.1*length(x)), TRUE)
+
+#remove rotavirus-positive samples
+phy<- subset_samples(phy, rota!="1")
+
+meta<-read.csv(file = "16S_metadata_DEC_diarrhea.csv")
+phy<-ps_join(x = phy, y = meta, type = "inner", match_sample_names="SampleID")
+
+#glom at the family level
+phy_fam <-phy%>%
+  tax_glom("Family")
+phy_fam
+```
+
+#run corncob to test for differences in relative abundance, adjusting for age category (adult, child, toddler, infant) and sex on abundance and age category, sex, and cc + pathotype on variability
+```{r}
+a <- differentialTest(formula = ~Infection_diarrhea+age_cat,
+                                 phi.formula = ~Infection_diarrhea+age_cat,
+                                 formula_null = ~age_cat,
+                                 phi.formula_null = ~Infection_diarrhea+age_cat,
+                                 data = phy_fam,
+                                 test = "Wald", boot = FALSE,
+                                 fdr_cutoff = .05)
+
+plot(a, level="Family")
+
+sig_marker_corncob<-as.data.frame(otu_to_taxonomy(OTU = a$significant_taxa, data = phy_fam))
+```
+
+#run lefse
+```{r}
+Lefse <- run_lefse(
+    phy_fam,
+    wilcoxon_cutoff = 0.05,
+    group = "Infection_diarrhea",
+    kw_cutoff = 0.05,
+    multigrp_strat = TRUE,
+    lda_cutoff = 3,
+    taxa_rank="Family"
+)
+Lefse
+
+sig_marker_lefse<-data.frame(marker_table(Lefse))
+
+plot_abundance(Lefse, group="Infection_diarrhea")
+plot_ef_bar(Lefse)
+```
+
+#plot boxplots of significant taxa
+```{r}
+phy_fam<-phy_fam %>%
+  transform_sample_counts(function(x) x / sum(x) )
+
+phy_fam_sig<-subset_taxa(phy_fam, Family=="[Paraprevotellaceae]" | Family=="Bacteroidaceae" | Family == "Verrucomicrobiaceae"| Family == "Bifidobacteriaceae" | Family == "Clostridiaceae"  | Family == "Erysipelotrichaceae" | Family == "Enterobacteriaceae" | Family == "Porphyromonadaceae" | Family == "Methanobacteriaceae" | Family == "Pasteurellaceae" | Family == "Fusobacteriaceae" | Family == "Lachnospiraceae" | Family == "Rikenellaceae" | Family== "Eubacteriaceae" | Family == "Elusimicrobiaceae") 
+taxa_names(phy_fam_sig) <- tax_table(phy_fam_sig)[ ,"Family"]
+
+sample_data(phy_fam_sig)$Infection_diarrhea<-factor(sample_data(phy_fam_sig)$Infection_diarrhea, levels=c("Infected_Case", "Infected_Control", "Uninfected_Case", "Uninfected_Control"))
+
+b<-psmelt(phy_fam_sig) %>%
+  ggplot(data = ., aes(x = Infection_diarrhea, y = Abundance, fill=NA)) +
+    geom_jitter(aes(color = Infection_diarrhea), height = 0, width = .4) +
+    geom_boxplot(outlier.shape  = NA) +
+    labs(x = "", y = "Abundance\n") +
+    facet_wrap(~ OTU, scales = "free")+
+    theme(panel.grid.major = element_blank(), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),legend.title=element_blank(), legend.position=c(0.9,0.1))+
+    scale_color_manual(values =c("coral2", "steelblue3", "darkgoldenrod2", "darkolivegreen4"), labels= c("Symptptomatic\nDEC infections", "Asymptomatic\nDEC infections", "Uninfected cases", "Uninfected controls"))
+
+b
+```
+
+#sqrt transformed boxplots
+```{r}
+phy_fam_sig_transformed <-transform_sample_counts(phy_fam_sig, function(x) sqrt(x))
+
+sample_data(phy_fam_sig_transformed)$Infection_diarrhea<-factor(sample_data(phy_fam_sig)$Infection_diarrhea, levels=c("Infected_Case", "Infected_Control", "Uninfected_Case", "Uninfected_Control"))
+
+c<-psmelt(phy_fam_sig_transformed) %>%
+  ggplot(data = ., aes(x = Infection_diarrhea, y = Abundance, fill=NA)) +
+    geom_jitter(aes(color = Infection_diarrhea), height = 0, width = .4, alpha=0.75) +
+    geom_boxplot(outlier.shape  = NA) +
+    labs(x = "", y = "Relative abundance\n") +
+    facet_wrap(~ OTU, scales = "free")+
+    theme(panel.grid.major = element_blank(), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),legend.title=element_blank(), legend.position=c(0.9,0.1))+
+  scale_color_manual(values =c("coral2", "steelblue3", "darkgoldenrod2", "darkolivegreen4"), labels= c("Symptptomatic\nDEC infections", "Asymptomatic\nDEC infections", "Uninfected cases", "Uninfected controls"))
+c
+```
+
+#heatmap
+```{r}
+taxa_names(phy_fam_sig) <- tax_table(phy_fam_sig)[ ,"Family"]
+sample_data<-phy_fam_sig %>%
+  sample_data() %>%
+  as.data.frame()%>%
+  rownames_to_column()
+
+samp<-data.frame(sample_data$rowname, sample_data$Infection_diarrhea)
+samp<-na.omit(samp)
+names(samp)[1] <- "rowname"
+
+rel_abund<-otu_table(phy_fam_sig, taxa_are_rows = TRUE)
+rel_abund_t<-rel_abund %>%
+  t()%>%
+  as.data.frame()%>%
+  tibble::rownames_to_column()
+
+rel_abund_join<-merge(rel_abund_t, samp, by="rowname")
+
+rel_abund_Infected_Case<-rel_abund_join%>%
+    subset(sample_data.Infection_diarrhea == "Infected_Case")%>%
+    subset(select=-c(1,17))
+rel_abund_Infected_Control<-rel_abund_join%>%
+  subset(sample_data.Infection_diarrhea == "Infected_Control")%>%
+    subset(select=-c(1,17))
+rel_abund_Uninfected_Case<-rel_abund_join%>%
+    subset(sample_data.Infection_diarrhea == "Uninfected_Case")%>%
+    subset(select=-c(1,17))
+rel_abund_Uninfected_Control<-rel_abund_join%>%
+  subset(sample_data.Infection_diarrhea == "Uninfected_Control")%>%
+    subset(select=-c(1,17))
+
+mean_Infected_Case<-colMeans(rel_abund_Infected_Case)
+mean_Infected_Control<-colMeans(rel_abund_Infected_Control)
+mean_Uninfected_Case<-colMeans(rel_abund_Uninfected_Case)
+mean_Uninfected_Control<-colMeans(rel_abund_Uninfected_Control)
+
+mean_rel_abunds<-data.frame(
+  Infected_Case=round(mean_Infected_Case, 5),
+  Infected_Control=round(mean_Infected_Control, 5),
+  Uninfected_Case=round(mean_Uninfected_Case, 5), 
+  Uninfected_Control=round(mean_Uninfected_Control, 5))
+mean_rel_abunds_mat<-data.matrix(mean_rel_abunds)
+
+heatmap_annot<-read.csv("mean_heatmap_annot v3.csv")
+stat_annot<-read.csv("corncob_lefse_annot.csv") %>%
+  column_to_rownames(var="X")%>%
+  as.data.frame.matrix() 
+
+col = list(Infection_diarrhea=c("Symptomatic DEC infections"="coral2", "Asymptomatic DEC infections"="steelblue3", "Uninfected cases"="darkgoldenrod2", "Uninfected controls"="darkolivegreen4"), Diarrhea = c("Case" = "white", "Control" = "white"), Infection=c("Infected"="white", "Uninfected"="white"))
+
+levels=c("Symptomatic DEC infections", "Asymptomatic DEC infections", "Uninfected cases", "Uninfected controls")
+
+ha<-HeatmapAnnotation(Infection_diarrhea=heatmap_annot$Infection_diarrhea, Infection=heatmap_annot$Infection, Diarrhea=heatmap_annot$Diarrhea, col=col, annotation_label=c("Sample group","DEC infection status", "Diarrhea status"))
+
+mycols_mean <- colorRamp2(breaks = c(0,(max(mean_rel_abunds_mat)/2),max(mean_rel_abunds_mat)), colors = c("gray98", "mediumpurple", "mediumpurple4"))
+heatmap_KW<-Heatmap(mean_rel_abunds_mat, 
+              row_names_gp = gpar(fontsize = 12), 
+              show_column_names=FALSE,  
+              show_column_dend=FALSE,
+              column_order = c("Infected_Case", "Infected_Control", "Uninfected_Case", "Uninfected_Control"),
+              col=mycols_mean, 
+              show_row_dend = FALSE, 
+              row_names_max_width=max_text_width(rownames(mean_rel_abunds_mat)), 
+              bottom_annotation=ha,   
+              #right_annotation=ha2,
+              #rect_gp=gpar(col="white", lwd=2),
+              heatmap_legend_param=list(title=c("Rel. abund"), legend_height=unit(3, "cm")))
+
+stat<-Heatmap(stat_annot, col=c("lightpink1", "darkslategray3"), width=unit(5, "mm"), name="Method", show_column_names = FALSE, show_row_names = TRUE, heatmap_legend_param=list(labels=c("LEfSe", "Corncob+LEfSe")))
+
+heatmap_KW+stat
+```
+
+#sqrt-transformed heatmap
+```{r}
+taxa_names(phy_fam_sig_transformed) <- tax_table(phy_fam_sig_transformed)[ ,"Family"]
+sample_data<-phy_fam_sig_transformed %>%
+  sample_data() %>%
+  as.data.frame()%>%
+  rownames_to_column()
+
+samp<-data.frame(sample_data$rowname, sample_data$Infection_diarrhea)
+samp<-na.omit(samp)
+names(samp)[1] <- "rowname"
+
+rel_abund<-otu_table(phy_fam_sig_transformed, taxa_are_rows = TRUE)
+rel_abund_t<-rel_abund %>%
+  t()%>%
+  as.data.frame()%>%
+  tibble::rownames_to_column()
+
+rel_abund_join<-merge(rel_abund_t, samp, by="rowname")
+
+rel_abund_Infected_Case<-rel_abund_join%>%
+    subset(sample_data.Infection_diarrhea == "Infected_Case")%>%
+    subset(select=-c(1,17))
+rel_abund_Infected_Control<-rel_abund_join%>%
+  subset(sample_data.Infection_diarrhea == "Infected_Control")%>%
+    subset(select=-c(1,17))
+rel_abund_Uninfected_Case<-rel_abund_join%>%
+    subset(sample_data.Infection_diarrhea == "Uninfected_Case")%>%
+    subset(select=-c(1,17))
+rel_abund_Uninfected_Control<-rel_abund_join%>%
+  subset(sample_data.Infection_diarrhea == "Uninfected_Control")%>%
+    subset(select=-c(1,17))
+
+mean_Infected_Case<-colMeans(rel_abund_Infected_Case)
+mean_Infected_Control<-colMeans(rel_abund_Infected_Control)
+mean_Uninfected_Case<-colMeans(rel_abund_Uninfected_Case)
+mean_Uninfected_Control<-colMeans(rel_abund_Uninfected_Control)
+
+mean_rel_abunds<-data.frame(
+  Infected_Case=round(mean_Infected_Case, 5),
+  Infected_Control=round(mean_Infected_Control, 5),
+  Uninfected_Case=round(mean_Uninfected_Case, 5), 
+  Uninfected_Control=round(mean_Uninfected_Control, 5))
+mean_rel_abunds_mat<-data.matrix(mean_rel_abunds)
+
+heatmap_annot<-read.csv("mean_heatmap_annot v3.csv")
+stat_annot<-read.csv("corncob_lefse_annot.csv") %>%
+  column_to_rownames(var="X")%>%
+  as.data.frame.matrix()
+
+col = list(Infection_diarrhea=c("Symptomatic DEC infections"="coral2", "Asymptomatic DEC infections"="steelblue3", "Uninfected cases"="darkgoldenrod2", "Uninfected controls"="darkolivegreen4"), Diarrhea = c("Case" = "white", "Control" = "white"), Infection=c("Infected"="white", "Uninfected"="white"))
+
+ha<-HeatmapAnnotation(Infection_diarrhea=heatmap_annot$Infection_diarrhea, Infection=heatmap_annot$Infection, Diarrhea=heatmap_annot$Diarrhea, col=col, annotation_label=c("Sample group","DEC infection status", "Diarrhea status"))
+
+mycols_mean <- colorRamp2(breaks = c(0,(max(mean_rel_abunds_mat)/2),max(mean_rel_abunds_mat)), colors = c("gray98", "mediumpurple", "mediumpurple4"))
+heatmap_sqrt_KW<-Heatmap(mean_rel_abunds_mat, 
+              row_names_gp = gpar(fontsize = 12), 
+              show_column_names=FALSE,  
+              show_column_dend=FALSE,
+              column_order = c("Infected_Case", "Infected_Control", "Uninfected_Case", "Uninfected_Control"),
+              col=mycols_mean, 
+              show_row_dend = FALSE, 
+              row_names_max_width=max_text_width(rownames(mean_rel_abunds_mat)), 
+              bottom_annotation=ha, 
+              #right_annotation=ha2,
+              #rect_gp=gpar(col="white", lwd=2),
+              heatmap_legend_param=list(title=c("Sqrt rel. abund"), legend_height=unit(3, "cm")))
+
+stat<-Heatmap(stat_annot, col=c("lightpink1", "darkslategray3"), width=unit(5, "mm"), name="Method", show_column_names = FALSE, show_row_names = TRUE, heatmap_legend_param=list(labels=c("LEfSe", "Corncob+LEfSe"))) 
+heatmap_sqrt_KW<-heatmap_sqrt_KW+stat
+heatmap_sqrt_KW
+```
+
+#mean relative abundance values
+```{r}
+#pathpos control-enriched taxa
+mean(rel_abund_Infected_Control$Bifidobacteriaceae)
+mean(rel_abund_Infected_Control$Rikenellaceae)
+mean(rel_abund_Infected_Control$Ruminococcaceae)
+mean(rel_abund_Infected_Control$Verrucomicrobiaceae)
+mean(rel_abund_Infected_Control$Bacteroidaceae)
+
+#abundances of other pathpos control-enriched taxa in other groups
+rel_abund_other<-rel_abund_join%>%
+    subset(sample_data.Infection_diarrhea == "Infected_Case" | sample_data.Infection_diarrhea == "Uninfected_Case" |sample_data.Infection_diarrhea == "Uninfected_Control")%>%
+    subset(select=-c(1,17))
+
+mean(rel_abund_other$Bifidobacteriaceae)
+mean(rel_abund_other$Rikenellaceae)
+mean(rel_abund_other$Ruminococcaceae)
+mean(rel_abund_other$Verrucomicrobiaceae)
+mean(rel_abund_other$Bacteroidaceae)
+```
+#re-import phyloseq data and subset data for participants <5y
+```{r}
+phy<-qza_to_phyloseq("table_EcoZUR.qza", 
+                     "rooted_tree_masked_aligned_rep_set_EcoZUR.qza", 
+                     "taxonomy_EcoZUR.qza", 
+                     "EcoZUR_meta_updated_pathotypes.tsv")
+
+#remove taxa where phylum is ambiguous (these are likely artifacts)
+phy <- subset_taxa(phy, !is.na(Phylum) & !Phylum %in% c("", "uncharacterized"))
+
+#remove chloroplast and mitochondrial sequences
+phy<-subset_taxa(phy, (Class!="Cloroplast") | is.na(Class))
+phy<-subset_taxa(phy, (Family!="mitochondria") | is.na(Class))
+
+#remove taxa that occur <2x and in <10% of samples
+phy = filter_taxa(phy, function(x) sum(x > 2) > (0.1*length(x)), TRUE)
+
+#remove rotavirus-positive samples
+phy<- subset_samples(phy, rota!="1")
+
+meta<-read.csv(file = "16S_metadata_DEC_diarrhea.csv")
+phy<-ps_join(x = phy, y = meta, type = "inner", match_sample_names="SampleID")
+
+#glom at the family level
+phy_fam <-phy%>%
+  tax_glom("Family")
+phy_fam
+
+phy_0to5<-subset_samples(phy_fam, age_cat=="1" | age_cat=="2")
+phy_0to5
+```
+
+#run corncob and lefse for participants <5y
+```{r}
+#corncob
+d <- differentialTest(formula = ~Infection_diarrhea,
+                                 phi.formula = ~Infection_diarrhea,
+                                 formula_null = ~1,
+                                 phi.formula_null = ~Infection_diarrhea,
+                                 data = phy_0to5,
+                                 test = "Wald", 
+                                 boot = FALSE,
+                                 fdr_cutoff = .05)
+
+plot(d, level="Family")
+
+sig_marker_corncob_0to5<-as.data.frame(otu_to_taxonomy(OTU = d$significant_taxa, data = phy_0to5))
+
+#lefse
+Lefse_0to5 <- run_lefse(
+    phy_0to5,
+    wilcoxon_cutoff = 0.05,
+    group = "Infection_diarrhea",
+    kw_cutoff = 0.05,
+    multigrp_strat = TRUE,
+    lda_cutoff = 3,
+    taxa_rank="Family"
+)
+Lefse_0to5
+
+sig_marker_lefse_0to5<-data.frame(marker_table(Lefse_0to5))
+
+plot_abundance(Lefse_0to5, group="Infection_diarrhea")
+plot_ef_bar(Lefse_0to5)
+```
+
+
+#boxplots of significant taxa for participants <5y
+```{r}
+#format data
+phy_0to5<-phy_0to5 %>%
+  transform_sample_counts(function(x) x / sum(x))
+
+#adult
+phy_fam_0to5_sig<-subset_taxa(phy_0to5, Family=="Enterobacteriaceae" | Family == "Pasteurellaceae" | Family == "[Paraprevotellaceae]"  | Family == "Clostridiaceae") 
+taxa_names(phy_fam_0to5_sig) <- tax_table(phy_fam_0to5_sig)[ ,"Family"]
+
+sample_data(phy_fam_0to5_sig)$Infection_diarrhea<factor(sample_data(phy_fam_0to5_sig)$Infection_diarrhea, levels=c("Infected_Case", "Infected_Control", "Uninfected_Case", "Uninfected_Control"))
+
+i<-psmelt(phy_fam_0to5_sig) %>%
+  ggplot(data = ., aes(x = Infection_diarrhea, y = Abundance, fill=NA)) +
+    geom_jitter(aes(color = Infection_diarrhea), height = 0, width = .4) +
+    geom_boxplot(outlier.shape  = NA) +
+    labs(x = "", y = "Relative abundance\n") +
+    facet_wrap(~ OTU, scales = "free")+
+    theme(panel.grid.major = element_blank(), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),legend.title=element_blank(), legend.position="right")+
+    scale_color_manual(values =c("coral2", "steelblue3", "darkgoldenrod2", "darkolivegreen4"), labels= c("Symptptomatic\nDEC infections", "Asymptomatic\nDEC infections", "Uninfected cases", "Uninfected controls"))
+i
+
+#sqrt transformed
+phy_fam_sig_0to5_transformed <-transform_sample_counts(phy_fam_0to5_sig, function(x) sqrt(x))
+
+sample_data(phy_fam_sig_0to5_transformed)$Infection_diarrhea<-factor(sample_data(phy_fam_sig_0to5_transformed)$Infection_diarrhea, levels=c("Infected_Case", "Infected_Control", "Uninfected_Case", "Uninfected_Control"))
+
+j<-psmelt(phy_fam_sig_0to5_transformed) %>%
+  ggplot(data = ., aes(x = Infection_diarrhea, y = Abundance, fill=NA)) +
+    geom_jitter(aes(color = Infection_diarrhea), height = 0, width = .4, alpha=0.75) +
+    geom_boxplot(outlier.shape  = NA) +
+    labs(x = "", y = "Relative abundance\n") +
+    facet_wrap(~ OTU, scales = "free")+
+    theme(panel.grid.major = element_blank(), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),legend.title=element_blank(), legend.position="right")+
+  scale_color_manual(values =c("coral2", "steelblue3", "darkgoldenrod2", "darkolivegreen4"), labels= c("Symptptomatic\nDEC infections", "Asymptomatic\nDEC infections", "Uninfected cases", "Uninfected controls"))
+j
+```
+
+#sqrt-transformed heatmap for participants aged <5y
+```{r}
+taxa_names(phy_fam_sig_0to5_transformed) <- tax_table(phy_fam_sig_0to5_transformed)[ ,"Family"]
+sample_data_0to5<-phy_fam_sig_0to5_transformed %>%
+  sample_data() %>%
+  as.data.frame()%>%
+  rownames_to_column()
+
+samp_0to5<-data.frame(sample_data_0to5$rowname, sample_data_0to5$Infection_diarrhea)
+samp_0to5<-na.omit(samp)
+names(samp_0to5)[1] <- "rowname"
+
+rel_abund_0to5<-otu_table(phy_fam_sig_0to5_transformed, taxa_are_rows = TRUE)
+rel_abund_0to5_t<-rel_abund_0to5 %>%
+  t()%>%
+  as.data.frame()%>%
+  tibble::rownames_to_column()
+
+rel_abund_0to5_join<-merge(rel_abund_0to5_t, samp_0to5, by="rowname")
+
+rel_abund_0to5_Infected_Case<-rel_abund_0to5_join%>%
+    subset(sample_data.Infection_diarrhea == "Infected_Case")%>%
+    subset(select=-c(1,6))
+rel_abund_0to5_Infected_Control<-rel_abund_0to5_join%>%
+  subset(sample_data.Infection_diarrhea == "Infected_Control")%>%
+    subset(select=-c(1,6))
+rel_abund_0to5_Uninfected_Case<-rel_abund_0to5_join%>%
+    subset(sample_data.Infection_diarrhea == "Uninfected_Case")%>%
+    subset(select=-c(1,6))
+rel_abund_0to5_Uninfected_Control<-rel_abund_0to5_join%>%
+  subset(sample_data.Infection_diarrhea == "Uninfected_Control")%>%
+    subset(select=-c(1,6))
+
+mean_0to5_Infected_Case<-colMeans(rel_abund_0to5_Infected_Case)
+mean_0to5_Infected_Control<-colMeans(rel_abund_0to5_Infected_Control)
+mean_0to5_Uninfected_Case<-colMeans(rel_abund_0to5_Uninfected_Case)
+mean_0to5_Uninfected_Control<-colMeans(rel_abund_0to5_Uninfected_Control)
+
+mean_rel_abunds_0to5<-data.frame(
+  Infected_Case=round(mean_0to5_Infected_Case, 5),
+  Infected_Control=round(mean_0to5_Infected_Control, 5),
+  Uninfected_Case=round(mean_0to5_Uninfected_Case, 5), 
+  Uninfected_Control=round(mean_0to5_Uninfected_Control, 5))
+mean_rel_abunds_0to5_mat<-data.matrix(mean_rel_abunds_0to5)
+
+heatmap_annot<-read.csv("mean_heatmap_annot v3.csv")
+stat_annot_0to5<-read.csv("corncob_lefse_annot_0to5.csv") %>%
+  column_to_rownames(var="X")%>%
+  as.data.frame.matrix()
+
+col = list(Infection_diarrhea=c("Symptomatic DEC infections"="coral2", "Asymptomatic DEC infections"="steelblue3", "Uninfected cases"="darkgoldenrod2", "Uninfected controls"="darkolivegreen4"), Diarrhea = c("Case" = "white", "Control" = "white"), Infection=c("Infected"="white", "Uninfected"="white"))
+
+ha<-HeatmapAnnotation(Infection_diarrhea=heatmap_annot$Infection_diarrhea, Infection=heatmap_annot$Infection, Diarrhea=heatmap_annot$Diarrhea, col=col, annotation_label=c("Sample group","DEC infection status", "Diarrhea status"))
+
+mycols_mean <- colorRamp2(breaks = c(0,(max(mean_rel_abunds_0to5_mat)/2),max(mean_rel_abunds_0to5_mat)), colors = c("gray98", "mediumpurple", "mediumpurple4"))
+heatmap_sqrt_KW_0to5<-Heatmap(mean_rel_abunds_0to5_mat, 
+              row_names_gp = gpar(fontsize = 12), 
+              show_column_names=FALSE,  
+              show_column_dend=FALSE,
+              column_order = c("Infected_Case", "Infected_Control", "Uninfected_Case", "Uninfected_Control"),
+              col=mycols_mean, 
+              show_row_dend = FALSE, 
+              row_names_max_width=max_text_width(rownames(mean_rel_abunds_mat)), 
+              bottom_annotation=ha, 
+              #right_annotation=ha2,
+              #rect_gp=gpar(col="white", lwd=2),
+              #column_title="Participants aged <5 years",
+              heatmap_legend_param=list(title=c("Sqrt rel. abund"), legend_height=unit(3, "cm")))
+stat_0to5<-Heatmap(stat_annot_0to5, col=c("lightpink1", "darkslategray3"), width=unit(5, "mm"), name="Method", show_column_names = FALSE, show_row_names = TRUE, heatmap_legend_param=list(labels=c("LEfSe", "Corncob+LEfSe")))
+
+heatmap_sqrt_KW_0to5<-heatmap_sqrt_KW_0to5+stat_0to5
+heatmap_sqrt_KW_0to5
+```
+#import Kraken/Bracken shotgun metagenome family-level results + metagenome metadata
+```{r}
+#bracken data
+bracken<-read.csv("Bracken_EcoZUR_family2.csv")%>%
+  column_to_rownames("Sample.name")%>%
+  mutate_all(as.numeric)
+
+#normalize by total trimmed read numbers
+divide_by_divisor <- function(divisor, .cols) {
+  .cols / divisor
+}
+
+bracken_norm<-bracken%>%
+  mutate_at(vars(-Trimmed.reads), ~ . / Trimmed.reads)%>%
+  select(-c(Trimmed.reads))%>%
+  t()
+```
+
+#create bracken phyloseq object
+```{r}
+#tax table
+bracken_tax<-read.csv("tax_table_kraken.csv")%>%
+  distinct()%>%
+  column_to_rownames("OTU")%>%
+  merge(bracken_norm, by=0)
+
+tax<-bracken_tax%>%
+  select(c(1,3:7))%>%
+  column_to_rownames("Row.names")%>%
+  tax_table(as.matrix())
+
+#otu table
+otu<-bracken_tax%>%
+  select(-c(2:7))%>%
+  column_to_rownames("Row.names")%>%
+  as.matrix()%>%
+  otu_table(taxa_are_rows = TRUE)
+
+tax_rows<-rownames(tax)
+rownames(otu) <- tax_rows
+
+#metadata
+meta_MG<-read.table(file="VFDB_metadata v2.txt", sep='\t', header=TRUE)%>%
+  column_to_rownames("Alternate.sample.ID")
+  
+samp<-sample_data(meta_MG)
+
+phy_brack<-phyloseq(tax,otu,samp) 
+colnames(tax_table(phy_brack)) <- c("Kingdom", "Phylum", "Class", "Order",  "Family")
+phy_brack
+
+#remove taxa where phylum is ambiguous (these are likely artifacts)
+phy_brack <- subset_taxa(phy_brack, !is.na(Phylum) & !Phylum %in% c("", "uncharacterized"))
+
+#remove chloroplast and mitochondrial sequences
+phy_brack<-subset_taxa(phy_brack, (Class!="Cloroplast") | is.na(Class))
+phy_brack<-subset_taxa(phy_brack, (Family!="mitochondria") | is.na(Class))
+
+#remove taxa that occur <2x and in <10% of samples and taxa that represent <0.1 of the total community
+phy_brack = filter_taxa(phy_brack, function(x) sum(x > 0) > (0.1*length(x)), TRUE)
+
+taxa_abundance <- tax_table(phy_brack)
+taxa_abundance$TotalAbundance <- rowSums(otu_table(phy_brack))
+
+phy_brack <- prune_taxa(taxa_abundance$TotalAbundance >= 0.1, phy_brack)
+```
+
+#run corncob on normalized Bracken results
+```{r}
+#s <- differentialTest(formula = ~Infection_diarrhea,
+                                 #phi.formula = ~1,
+                                 #formula_null = ~Infection_diarrhea,
+                                 #phi.formula_null = ~Infection_diarrhea,
+                                 #data = phy_brack,
+                                 #test = "Wald", boot = FALSE,
+                                 #fdr_cutoff = .05) 
+#model fails to converge
+```
+
+#run lefse on normalized Bracken results
+```{r}
+Lefse_brack <- run_lefse(
+    phy_brack,
+    wilcoxon_cutoff = 0.05,
+    group = "Infection_diarrhea",
+    kw_cutoff = 0.05,
+    multigrp_strat = TRUE,
+    lda_cutoff = 3,
+    taxa_rank="Family"
+)
+Lefse_brack
+
+sig_marker_lefse<-data.frame(marker_table(Lefse_brack))
+
+plot_abundance(Lefse_brack, group="Infection_diarrhea")
+plot_ef_bar(Lefse_brack)
+```
+
+#bracken boxplots
+```{r}
+#bracken sig lefse taxa
+phy_brack_sig<-subset_taxa(phy_brack, Family=="Bacteroidaceae" | Family == "Erysipelotrichaceae"  | Family == "Streptococcaceae" | Family == "Enterobacteriaceae") 
+taxa_names(phy_brack_sig) <- tax_table(phy_brack_sig)[ ,"Family"]
+
+#sqrt transformed boxplots
+phy_brack_sig_transformed <-transform_sample_counts(phy_brack_sig, function(x) sqrt(x))
+
+sample_data(phy_brack_sig_transformed)$Infection_diarrhea<-factor(sample_data(phy_brack_sig_transformed)$Infection_diarrhea, levels=c("Infected_Case", "Infected_Control", "Uninfected_Case", "Uninfected_Control"))
+
+q<-psmelt(phy_brack_sig_transformed) %>%
+  ggplot(data = ., aes(x = Infection_diarrhea, y = Abundance, fill=NA)) +
+    geom_jitter(aes(color = Infection_diarrhea), height = 0, width = .4, alpha=0.75) +
+    geom_boxplot(outlier.shape  = NA) +
+    labs(x = "", y = "Relative abundance\n") +
+    facet_wrap(~ OTU, scales = "free")+
+    theme(panel.grid.major = element_blank(), axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),legend.title=element_blank(), legend.position="right")+
+  scale_color_manual(values =c("coral2", "steelblue3", "darkgoldenrod2", "darkolivegreen4"), labels= c("Symptptomatic\nDEC infections", "Asymptomatic\nDEC infections", "Uninfected cases", "Uninfected controls"))
+                     
+q
+```
+
+#bracken heatmap
+```{r}
+taxa_names(phy_brack_sig_transformed) <- tax_table(phy_brack_sig_transformed)[ ,"Family"]
+
+sample_data_brack<-phy_brack_sig_transformed %>%
+  sample_data() %>%
+  as.data.frame()%>%
+  rownames_to_column()
+
+samp_brack<-data.frame(sample_data_brack$rowname, sample_data_brack$Infection_diarrhea)
+samp_brack<-na.omit(samp)
+names(samp_brack)[2] <- "rowname"
+
+rel_abund_brack<-otu_table(phy_brack_sig_transformed, taxa_are_rows = TRUE)
+rel_abund_brack_t<-rel_abund_brack %>%
+  t()%>%
+  as.data.frame()%>%
+  tibble::rownames_to_column()
+
+rel_abund_brack_join<-left_join(rel_abund_brack_t, samp_brack, by="rowname")
+
+rel_abund_brack_Infected_Case<-rel_abund_brack_join%>%
+    subset(Infection_diarrhea == "Infected_Case")%>%
+    subset(select=-c(1,6:11))
+rel_abund_brack_Infected_Control<-rel_abund_brack_join%>%
+  subset(Infection_diarrhea == "Infected_Control")%>%
+    subset(select=-c(1,6:11))
+rel_abund_brack_Uninfected_Case<-rel_abund_brack_join%>%
+    subset(Infection_diarrhea == "Uninfected_Case")%>%
+    subset(select=-c(1,6:11))
+rel_abund_brack_Uninfected_Control<-rel_abund_brack_join%>%
+  subset(Infection_diarrhea == "Uninfected_Control")%>%
+    subset(select=-c(1,6:11))
+
+mean_brack_Infected_Case<-colMeans(rel_abund_brack_Infected_Case)
+mean_brack_Infected_Control<-colMeans(rel_abund_brack_Infected_Control)
+mean_brack_Uninfected_Case<-colMeans(rel_abund_brack_Uninfected_Case)
+mean_brack_Uninfected_Control<-colMeans(rel_abund_brack_Uninfected_Control)
+
+mean_rel_abunds_brack<-data.frame(
+  Infected_Case=round(mean_brack_Infected_Case, 5),
+  Infected_Control=round(mean_brack_Infected_Control, 5),
+  Uninfected_Case=round(mean_brack_Uninfected_Case, 5), 
+  Uninfected_Control=round(mean_brack_Uninfected_Control, 5))
+mean_rel_abunds_brack_mat<-data.matrix(mean_rel_abunds_brack)
+
+heatmap_annot<-read.csv("mean_heatmap_annot v3.csv")
+stat_annot_brack<-read.csv("corncob_lefse_annot_brack.csv") %>%
+  column_to_rownames(var="X")%>%
+  as.data.frame.matrix()
+
+col = list(Infection_diarrhea=c("Symptomatic DEC infections"="coral2", "Asymptomatic DEC infections"="steelblue3", "Uninfected cases"="darkgoldenrod2", "Uninfected controls"="darkolivegreen4"), Diarrhea = c("Case" = "white", "Control" = "white"), Infection=c("Infected"="white", "Uninfected"="white"))
+
+ha<-HeatmapAnnotation(Infection_diarrhea=heatmap_annot$Infection_diarrhea, Infection=heatmap_annot$Infection, Diarrhea=heatmap_annot$Diarrhea, col=col, annotation_label=c("Sample group","DEC infection status", "Diarrhea status"))
+
+mycols_mean <- colorRamp2(breaks = c(0,(max(mean_rel_abunds_brack_mat)/2),max(mean_rel_abunds_brack_mat)), colors = c("gray98", "mediumpurple", "mediumpurple4"))
+heatmap_sqrt_KW_brack<-Heatmap(mean_rel_abunds_brack_mat, 
+              row_names_gp = gpar(fontsize = 12), 
+              show_column_names=FALSE,  
+              show_column_dend=FALSE,
+              column_order = c("Infected_Case", "Infected_Control", "Uninfected_Case", "Uninfected_Control"),
+              col=mycols_mean, 
+              show_row_dend = FALSE, 
+              row_names_max_width=max_text_width(rownames(mean_rel_abunds_mat)), 
+              bottom_annotation=ha, 
+              #right_annotation=ha2,
+              #rect_gp=gpar(col="white", lwd=2),
+              heatmap_legend_param=list(title=c("Sqrt rel. abund"), legend_height=unit(3, "cm")))
+
+stat_brack<-Heatmap(stat_annot_brack, col=c("lightpink1"), width=unit(5, "mm"), name="Method", show_column_names = FALSE, show_row_names = TRUE, heatmap_legend_param=list(labels=c("LEfSe")))
+
+heatmap_sqrt_KW_brack<-heatmap_sqrt_KW_brack+stat_brack
+heatmap_sqrt_KW_brack
+```
+
+#16S family-level barplots
+```{r}
+phy_family<-phy %>%
+    tax_glom(taxrank="Family") %>%
+    transform_sample_counts(function(x) {x/sum(x)}) %>%
+    psmelt() %>%
+    arrange(Family)%>%
+    group_by(Family) %>%
+    filter(sum(Abundance) > 0.1) %>%
+    ungroup()
+nb.cols<-25
+family_colors<-colorRampPalette(brewer.pal(8, "Paired"))(nb.cols)
+phy_plot_family<-ggplot(phy_family, aes(x=Infection_diarrhea, y=Abundance, fill=Family))+
+    geom_bar(stat="identity", position="fill")+
+    guides(fill=guide_legend(revers=TRUE, keywidth=0.6, keyheight=.5, ncol=1))+
+    ylab("Relative abundance")+
+    scale_fill_manual(values=family_colors)+
+    theme(axis.title.x=element_blank())+
+    scale_x_discrete(labels = c("Symptomatic DEC infections", "Asymptomatic DEC infections", "Uninfected cases", "Uninfected controls"))
+phy_plot_family
+```
+
+#shotgun metagenome family-level barplots
+```{r}
+phy_family_brack<-phy_brack %>%
+    tax_glom(taxrank="Family") %>%
+    transform_sample_counts(function(x) {x/sum(x)}) %>%
+    psmelt() %>%
+    arrange(Family)%>%
+    group_by(Family) %>%
+    ungroup() 
+nb.cols<-35
+family_colors<-colorRampPalette(brewer.pal(8, "Paired"))(nb.cols)
+phy_plot_family_brack<-ggplot(phy_family_brack, aes(x=Infection_diarrhea, y=Abundance, fill=Family))+
+    geom_bar(stat="identity", position="fill")+
+    guides(fill=guide_legend(revers=TRUE, keywidth=0.6, keyheight=.5, ncol=1))+
+    ylab("Relative abundance")+
+    scale_fill_manual(values=family_colors)+
+    theme(axis.title.x=element_blank())+
+    scale_x_discrete(labels = c("Symptomatic DEC infections", "Asymptomatic DEC infections", "Uninfected cases", "Uninfected controls"))
+phy_plot_family_brack
+```
+#barplot multiplot
+```{r}
+plot_grid(phy_plot_family, phy_plot_family_brack)
+```
+

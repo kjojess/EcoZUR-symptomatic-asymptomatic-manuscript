@@ -7,7 +7,7 @@ output: html_document
 
 #clear R env
 ```{r message=FALSE, warning=FALSE}
-rm(list = ls())
+#rm(list = ls())
 ```
 
 #load libraries
@@ -49,15 +49,15 @@ phy<-subset_taxa(phy, (Family!="mitochondria") | is.na(Class))
 phy
 
 #remove taxa that occur <2x and in <10% of samples
-phy = filter_taxa(phy, function(x) sum(x > 2) > (0.1*length(x)), TRUE)
+#phy = filter_taxa(phy, function(x) sum(x > 2) > (0.1*length(x)), TRUE)
 
-phy
+#phy
 
 #remove rotavirus-positive samples
 phy<- subset_samples(phy, rota!="1")
 
 #remove E. coli
-phy_filt<-subset_taxa(phy, (Species!="coli"))
+phy_filt<-subset_taxa(phy, (Species!="coli") | is.na(Species))
 
 #add diarrhea and infection status metadata to phyloseq object
 meta<-read.csv(file = "16S_metadata_DEC_diarrhea.csv")
@@ -520,9 +520,9 @@ k_title<-ggdraw()+
 l<-plot_grid(k_title, k, ncol=1, rel_heights=c(0.1,1))
 
 m<-plot_grid(j, l, legends, ncol=1, nrow=3, rel_heights = c(5, 5, 1), rel_widths=c(10, 10, 1))
-m1<-m+draw_text("PERMANOVA, p=0.12", x=0.17, y=0.94, size=10)+
-     draw_text("PERMANOVA, p=0.036", x=0.67, y=0.94, size=10)+
-     draw_text("PERMANOVA, p=0.13", x=0.1725, y=0.485, size=10)+
+m1<-m+draw_text("PERMANOVA, p=0.13", x=0.17, y=0.94, size=10)+
+     draw_text("PERMANOVA, p=0.016", x=0.67, y=0.94, size=10)+
+     draw_text("PERMANOVA, p=0.12", x=0.1725, y=0.485, size=10)+
      draw_text("PERMANOVA, p=0.17", x=0.6725, y=0.485, size=10)
 m1
 ```
@@ -543,8 +543,8 @@ p_title<-ggdraw()+
 q<-plot_grid(p_title, p, ncol=1, rel_heights=c(0.1,1))
 
 r<-plot_grid(o, q, legends, ncol=1, nrow=3, rel_heights = c(5, 5, 1), rel_widths=c(10, 10, 1))
-r1<-r+draw_text("PERMANOVA, p=0.061", x=0.17, y=0.94, size=10)+
-     draw_text("PERMANOVA, p=0.14", x=0.67, y=0.94, size=10)+
+r1<-r+draw_text("PERMANOVA, p=0.13", x=0.17, y=0.94, size=10)+
+     draw_text("PERMANOVA, p=0.015", x=0.67, y=0.94, size=10)+
      draw_text("PERMANOVA, p=0.26", x=0.1725, y=0.485, size=10)+
      draw_text("PERMANOVA, p=0.20", x=0.6725, y=0.485, size=10)
 

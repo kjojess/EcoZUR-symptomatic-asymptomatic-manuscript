@@ -1,0 +1,107 @@
+---
+title: "symp asymp phylogeny"
+author: "Kelsey Jesser"
+date: "11/4/2021"
+output: html_document
+---
+```{r}
+rm(list = ls())
+```
+
+#load libraries
+```{r}
+library(ape)
+library(Biostrings)
+library(ggplot2)
+library(ggtree)
+library(treeio)
+library(phangorn)
+library(gplots)
+library(ggthemr)
+library(cowplot)
+library(phytools)
+library(ape)
+library(data.table)
+```
+
+#set theme
+```{r}
+ggthemr('fresh')
+```
+
+#import isolate tree and metadata
+```{r}
+meta<-read.csv("isolate_metadata v3.csv")
+
+
+tree<-read.newick("core_tree_symp_asymp_2023 2.newick") %>%
+  midpoint(node.labels= "support")
+```
+#add ages to metadata
+```{r}
+ages_meta<-read.csv("ages_metadata_final.csv")%>%
+  select(c(Sample.ID, Age.years, Age.months))%>%
+  left_join(meta)%>%
+  na.omit()
+
+meta_adult<-ages_meta%>%
+  mutate(Age.years=as.numeric(Age.years))%>%
+  subset(Age.years>=16)
+
+meta_child<-ages_meta%>%
+  mutate(Age.years=as.numeric(Age.years))%>%
+  subset(Age.years<=15)%>%
+  subset(Age.years>=5) 
+
+meta_toddler<-ages_meta%>%
+  mutate(Age.years=as.numeric(Age.years))%>%
+  subset(Age.years<=4)%>%
+  subset(Age.years>=2) 
+
+meta_infant<-ages_meta%>%
+  mutate(Age.years=as.numeric(Age.years))%>%
+  subset(Age.years<=1)%>%
+  subset(Age.years>=0) 
+```
+
+
+#plot tree with cc and pathotype status
+```{r}
+p<-ggtree(tree, layout="fan")
+
+q<-p %<+% meta +
+  geom_tippoint(aes(color=Diarrhea), size = 3, alpha=0.8)+
+ # geom_treescale(fontsize=3, x=0.0025, y=-0.35)+
+  geom_tiplab(size=3, align=TRUE)+
+  geom_text2(aes(subset=!isTip, label=label), hjust =1.25, vjust=-0.3, size=1.5)+
+  scale_color_manual(values=c("Symptomatic infection"="coral2","Asymptomatic infection"="steelblue3"))+
+  theme(legend.title=element_blank(), legend.position="right")
+q
+```
+#testing for significant differences
+```{r}
+#copy in delta statistic scripts from : https://github.com/mrborges23/delta_statistic/blob/master/code.R
+
+#converting cc data into a vector with the same order as tree tips
+tips<-data.frame(tree$tip.label)
+colnames(tips)[1]<-"isolateid"
+train_df<-setDT(meta)[tips, on="isolateid"]
+train_v<-as.vector(train_df$Diarrhea)
+
+#make sure all branches are positive
+tree$edge.length[tree$edge.length==0] <- quantile(tree$edge.length,0.1)*0.1
+
+#delta statistic
+deltaA <- delta(train_v, tree,0.1,0.0589,10000,10,100)
+
+#calculate p-value
+random_delta <- rep(NA,1000)
+for (i in 1:100){
+  rtrait <- sample(train_v)
+  random_delta[i] <- delta(rtrait,tree,0.1,0.0589,10000,10,100)
+}
+p_value <- sum(random_delta>deltaA)/length(random_delta)
+boxplot(random_delta)
+abline(h=deltaA,col="red")
+```
+

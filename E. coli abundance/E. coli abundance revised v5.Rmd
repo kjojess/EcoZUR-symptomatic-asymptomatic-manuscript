@@ -2,14 +2,14 @@
 title: "E. coli abundance comparisons"
 author: "Kelsey Jesser"
 date: "7/11/2023"
-output: html_document
+output: pdf_document
 ---
 ```{r setup, include=FALSE} 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
 ```
 
 ```{r}
-#rm(list = ls())
+rm(list = ls())
 ```
 
 #load libraries
@@ -280,16 +280,16 @@ l
 #multiplots
 ```{r}
 #barplots
-plot_grid(isolate_bar, uida_bar, perc_E.coli_bar, ncol=2)
+cowplot::plot_grid(isolate_bar, uida_bar, perc_E.coli_bar, ncol=2)
 
 #boxplots
-plot_grid(isolate_box, uida_box, perc_E.coli_box, ncol=2)
+cowplot::plot_grid(isolate_box, uida_box, perc_E.coli_box, ncol=2)
 
 #comparisons
 isolate_qPCR_scat_perc
 
 #inset multiplot
-p<-plot_grid(isolate_plot, 
+p<-cowplot::plot_grid(isolate_plot, 
              perc_E.coli_plot,
              l,
              ncol=1, align="hv", 
@@ -297,7 +297,7 @@ p<-plot_grid(isolate_plot,
              label_size=20, 
              rel_heights = c(1, 1, 0.25), 
              rel_widths=c(1, .9, 1))
-q<-plot_grid(p)+
+q<-cowplot::plot_grid(p)+
     draw_text("Wilcoxon, p=0.0049", x = 0.1725, y = .925, size = 10)+
     draw_text("Wilcoxon, p=0.11", x=0.175, y=0.475, size = 10)
 q
@@ -324,113 +324,50 @@ isolate_plot<-ggdraw() +
     draw_plot(isolate_bar) +
     draw_plot(isolate_box, x = 0.675, y = 0.625, width = 0.25, height = 0.325)
 
-isolate_plot<-plot_grid(isolate_plot)+draw_text("Wilcoxon, p=0.0049", x = 0.17, y = .95, size = 10)
+isolate_plot<-cowplot::plot_grid(isolate_plot)+draw_text("Wilcoxon, p=0.0049", x = 0.17, y = .95, size = 10)
 isolate_plot
 ```
 
-#Subset metagenome isolate abundances by age category
+#Subset metagenome isolate abundances for ages 0-5y
 ```{r}
 ages<-read.csv("ages_metadata_final.csv")%>%
   select(c(Alternate.Sample.ID, Age.years, Age.months))
 
 isolate_melt_age<-isolate_melt%>%
-  rename(Alternate.Sample.ID=Sample_ID)%>%
+  dplyr::rename(Alternate.Sample.ID=Sample_ID)%>%
   left_join(ages, by="Alternate.Sample.ID")
 
-isolate_melt_adult<-isolate_melt_age%>%
-  mutate(Age.years=as.numeric(Age.years))%>%
-  subset(Age.years>=15) #only one sample, no additional analyses
-
-isolate_melt_child<-isolate_melt_age%>%
-  mutate(Age.years=as.numeric(Age.years))%>%
-  subset(Age.years<=15)%>%
-  subset(Age.years>=5)
-
-isolate_melt_toddler<-isolate_melt_age%>%
+isolate_melt_0to5<-isolate_melt_age%>%
   mutate(Age.years=as.numeric(Age.years))%>%
   subset(Age.years<=4)%>%
-  subset(Age.years>=2)
-  
-isolate_melt_infant<-isolate_melt_age%>%
-  mutate(Age.years=as.numeric(Age.years))%>%
-  subset(Age.years<=1)%>%
   subset(Age.years>=0)
 ```
 
-#Compare isolate abundances in metagenomes for child samples
+#Compare isolate abundances in metagenomes for participants aged <5y
 ```{r}
 #isolate abundance
 #barplot
-df_isolate.mean = isolate_melt_child %>% 
+df_isolate.mean = isolate_melt_0to5 %>% 
   group_by(symp.asymp) %>% 
   mutate(mean = mean(value))
 
-isolate_bar_child<-isolate_melt_child %>% 
-  #arrange(value) %>%
+isolate_bar_0to5<-isolate_melt_0to5 %>% 
+  arrange(value) %>%
   mutate(Alternate.Sample.ID=fct_reorder(Alternate.Sample.ID, value)) %>%
   mutate(Alternate.Sample.ID=fct_reorder(Alternate.Sample.ID, symp.asymp)) %>%
   ggplot(aes(fill=symp.asymp, y=value, x=Alternate.Sample.ID))+
     geom_bar(stat="identity")+
     scale_fill_manual(values=c("Symptomatic"="coral2", "Asymptomatic"="steelblue3"), name="DEC infection type")+
-    ggtitle("DEC isolate metagenome abundance in children (ages 5-15y)")+
+    #ggtitle("DEC isolate metagenome abundance in children ages 0-5y")+
     ylab("% abundance")+
     xlab(NULL)+
     geom_errorbar(data=df_isolate.mean, aes(Alternate.Sample.ID, ymax = mean, ymin = mean), size=0.5, linetype = "longdash", inherit.aes = F, width = 1, color="black")+
-    theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), axis.text.x=element_text(angle=90, vjust=0.5, hjust=1),  panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="none", plot.title=element_text(face="plain"))+
-    theme(axis.line.x.bottom=element_line(color="black"))+
-    theme(axis.line.y.left=element_line(color="black"))+
-  ylim(0, 2.5)
-
-#boxplot
-isolate_box_child<-isolate_melt_child %>% 
-  ggplot(aes(fill=symp.asymp, y=value, x=symp.asymp))+
-    geom_boxplot()+
-    scale_fill_manual(values=c("Symptomatic"="coral2", "Asymptomatic"="steelblue3"), name="DEC infection type")+
-    xlab(NULL)+
-    theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.position="none", panel.border=element_rect(color="black", fill=NA, size=0.5), axis.title.y=element_blank(), axis.text.x=(element_text(size=8)))+
-    theme(axis.line = element_line(color="black", size =.1), axis.ticks=element_line(color="black"))
-
-isolate_plot_child<-ggdraw() +
-    draw_plot(isolate_bar_child) +
-    draw_plot(isolate_box_child, x = 0.6, y = 0.55, width = 0.25, height = 0.3)
-
-#stats
-isolate_melt_symp_child<-isolate_melt_child %>% 
-  subset(symp.asymp=="Symptomatic") %>%
-  drop_na("value")
-isolate_melt_asymp_child<-isolate_melt_child %>%
-  subset(symp.asymp=="Asymptomatic") %>%
-  drop_na("value")
-
-wilcox.test(isolate_melt_symp_child$value, isolate_melt_asymp_child$value)
-
-isolate_plot_child<- isolate_plot_child+draw_text("Wilcoxon, p=0.25", x = 0.17, y = .875, size = 10)
-```
-#Compare isolate abundances in metagenomes for toddler samples
-```{r}
-#isolate abundance
-#barplot
-df_isolate.mean = isolate_melt_toddler %>% 
-  group_by(symp.asymp) %>% 
-  mutate(mean = mean(value))
-
-isolate_bar_toddler<-isolate_melt_toddler %>% 
-  #arrange(value) %>%
-  mutate(Alternate.Sample.ID=fct_reorder(Alternate.Sample.ID, value)) %>%
-  mutate(Alternate.Sample.ID=fct_reorder(Alternate.Sample.ID, symp.asymp)) %>%
-  ggplot(aes(fill=symp.asymp, y=value, x=Alternate.Sample.ID))+
-    geom_bar(stat="identity")+
-    scale_fill_manual(values=c("Symptomatic"="coral2", "Asymptomatic"="steelblue3"), name="DEC infection type")+
-    ggtitle("DEC isolate metagenome abundance in toddlers (ages 2-5y)")+
-    ylab("% abundance")+
-    xlab(NULL)+
-    geom_errorbar(data=df_isolate.mean, aes(Alternate.Sample.ID, ymax = mean, ymin = mean), size=0.5, linetype = "longdash", inherit.aes = F, width = 1, color="black")+
-    theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), axis.text.x=element_text(angle=90, vjust=0.5, hjust=1),  panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="none", plot.title=element_text(face="plain"))+
+    theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), axis.text.x=element_text(angle=90, vjust=0.5, hjust=1),  panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="bottom", plot.title=element_text(face="plain"))+
     theme(axis.line.x.bottom=element_line(color="black"))+
     theme(axis.line.y.left=element_line(color="black"))
 
 #boxplot
-isolate_box_toddler<-isolate_melt_toddler %>% 
+isolate_box_0to5<-isolate_melt_0to5 %>% 
   ggplot(aes(fill=symp.asymp, y=value, x=symp.asymp))+
     geom_boxplot()+
     scale_fill_manual(values=c("Symptomatic"="coral2", "Asymptomatic"="steelblue3"), name="DEC infection type")+
@@ -438,81 +375,21 @@ isolate_box_toddler<-isolate_melt_toddler %>%
     theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.position="none", panel.border=element_rect(color="black", fill=NA, size=0.5), axis.title.y=element_blank(), axis.text.x=(element_text(size=8)))+
     theme(axis.line = element_line(color="black", size =.1), axis.ticks=element_line(color="black"))
 
-isolate_plot_toddler<-ggdraw() +
-    draw_plot(isolate_bar_toddler) +
-    draw_plot(isolate_box_toddler, x = 0.65, y = 0.6, width = 0.25, height = 0.3)
+isolate_plot_0to5<-ggdraw() +
+    draw_plot(isolate_bar_0to5) +
+    draw_plot(isolate_box_0to5, x = 0.65, y = 0.65, width = 0.25, height = 0.3)
+isolate_plot_0to5
 
 #stats
-isolate_melt_symp_toddler<-isolate_melt_toddler %>% 
+isolate_melt_symp_0to5<-isolate_melt_0to5 %>% 
   subset(symp.asymp=="Symptomatic") %>%
   drop_na("value")
-isolate_melt_asymp_toddler<-isolate_melt_toddler %>%
+isolate_melt_asymp_0to5<-isolate_melt_0to5 %>%
   subset(symp.asymp=="Asymptomatic") %>%
   drop_na("value")
 
-wilcox.test(isolate_melt_symp_toddler$value, isolate_melt_asymp_toddler$value)
+wilcox.test(isolate_melt_symp_0to5$value, isolate_melt_symp_0to5$value)
 
-isolate_plot_toddler<- isolate_plot_toddler+draw_text("Wilcoxon, p=0.077", x = 0.18, y = .875, size = 10)
+isolate_plot_0to5<- isolate_plot_0to5+draw_text("Wilcoxon, p=0.02", x = 0.15, y = .95, size = 10)
+isolate_plot_0to5
 ```
-#Compare isolate abundances in metagenomes for infant samples
-```{r}
-#isolate abundance
-#barplot
-df_isolate.mean = isolate_melt_infant %>% 
-  group_by(symp.asymp) %>% 
-  mutate(mean = mean(value))
-
-isolate_bar_infant<-isolate_melt_infant %>% 
-  #arrange(value) %>%
-  mutate(Alternate.Sample.ID=fct_reorder(Alternate.Sample.ID, value)) %>%
-  mutate(Alternate.Sample.ID=fct_reorder(Alternate.Sample.ID, symp.asymp)) %>%
-  ggplot(aes(fill=symp.asymp, y=value, x=Alternate.Sample.ID))+
-    geom_bar(stat="identity")+
-    scale_fill_manual(values=c("Symptomatic"="coral2", "Asymptomatic"="steelblue3"), name="DEC infection type")+
-    ggtitle("DEC isolate metagenome abundance in infants (ages 0-2 y)")+
-    ylab("% abundance")+
-    xlab(NULL)+
-    geom_errorbar(data=df_isolate.mean, aes(Alternate.Sample.ID, ymax = mean, ymin = mean), size=0.5, linetype = "longdash", inherit.aes = F, width = 1, color="black")+
-    theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), axis.text.x=element_text(angle=90, vjust=0.5, hjust=1),  panel.border=element_rect(color="black", fill=NA, size=0.5), legend.position="none", plot.title=element_text(face="plain"))+
-    theme(axis.line.x.bottom=element_line(color="black"))+
-    theme(axis.line.y.left=element_line(color="black"))
-
-#boxplot
-isolate_box_infant<-isolate_melt_infant %>% 
-  ggplot(aes(fill=symp.asymp, y=value, x=symp.asymp))+
-    geom_boxplot()+
-    scale_fill_manual(values=c("Symptomatic"="coral2", "Asymptomatic"="steelblue3"), name="DEC infection type")+
-    xlab(NULL)+
-    theme(panel.grid.major=element_blank(), panel.grid.minor=element_blank(), legend.position="none", panel.border=element_rect(color="black", fill=NA, size=0.5), axis.title.y=element_blank(), axis.text.x=(element_text(size=8)))+
-    theme(axis.line = element_line(color="black", size =.1), axis.ticks=element_line(color="black"))
-
-isolate_plot_infant<-ggdraw() +
-    draw_plot(isolate_bar_infant) +
-    draw_plot(isolate_box_infant, x = 0.65, y = 0.575, width = 0.25, height = 0.3)
-
-#stats
-isolate_melt_symp_infant<-isolate_melt_infant %>% 
-  subset(symp.asymp=="Symptomatic") %>%
-  drop_na("value")
-isolate_melt_asymp_infant<-isolate_melt_infant %>%
-  subset(symp.asymp=="Asymptomatic") %>%
-  drop_na("value")
-
-wilcox.test(isolate_melt_symp_infant$value, isolate_melt_asymp_infant$value)
-
-isolate_plot_infant<-isolate_plot_infant+draw_text("Wilcoxon, p=0.15", x = 0.17, y = .875, size = 10)
-```
-#multiplot by age
-```{r}
-r<-plot_grid(isolate_plot_infant, 
-             isolate_plot_toddler,
-             isolate_plot_child,
-             l,
-             ncol=1, align="hv", 
-             labels=c("A", "B", "C", ""), 
-             label_size=20, 
-             rel_heights = c(1, 1, 1, 0.25), 
-             rel_widths=c(1, 1, 1, 1))
-r
-```
-
